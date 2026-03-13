@@ -31,6 +31,21 @@ FLOWER_HF_FILENAME = "best.pt"
 TOMATO_CLASSES = {0: "Unripe", 1: "Half_Ripe", 2: "Ripe"}
 FLOWER_CLASSES = {0: "Stage_0", 1: "Stage_1", 2: "Stage_2"}
 
+def make_ts_key(timestamp: str) -> str:
+    """
+    Sanitize an ISO timestamp for use as a MongoDB document key.
+
+    MongoDB treats '.' as a field-path separator in $set dot notation, so a
+    timestamp like '2026-03-13T12:00:00.000000' would be misinterpreted as a
+    nested path.  Replace every '.' with '_' to produce a safe key while
+    keeping the string unique and human-readable.
+
+    Example:
+        '2026-03-13T12:00:00.000000' → '2026-03-13T12:00:00_000000'
+    """
+    return timestamp.replace(".", "_")
+
+
 # CORS origins
 CORS_ORIGINS = [
     "http://localhost:5173",

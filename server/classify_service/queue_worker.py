@@ -25,6 +25,7 @@ from itertools import count
 from bson import ObjectId
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from shared.config import make_ts_key
 from shared.db import get_db, get_gridfs_bucket
 
 # imported lazily at worker start to avoid circular-import issues
@@ -123,7 +124,7 @@ async def _process_job(job: dict) -> None:
             logger.error("Document not found: %s", doc_id_str)
             return
 
-        ts_entry = doc.get("timestamps", {}).get(timestamp, {})
+        ts_entry = doc.get("timestamps", {}).get(make_ts_key(timestamp), {})
         original_ids = ts_entry.get("original_images", [])
 
         if not original_ids:
@@ -157,7 +158,7 @@ async def _process_job(job: dict) -> None:
         flower_data = {k: v for k, v in flower_result.items() if k != "annotated_image_bytes"}
 
         # Update MongoDB document
-        ts_key = f"timestamps.{timestamp}"
+        ts_key = f"timestamps.{make_ts_key(timestamp)}"
         await collection.update_one(
             {"_id": ObjectId(doc_id_str)},
             {"$set": {

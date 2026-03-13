@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from shared.config import CORS_ORIGINS
+from shared.config import CORS_ORIGINS, make_ts_key
 from shared.db import close_db, get_db, get_gridfs_bucket
 
 import classifier
@@ -166,7 +166,7 @@ async def _classify_and_save(
     tomato_data = {k: v for k, v in tomato_result.items() if k != "annotated_image_bytes"}
     flower_data = {k: v for k, v in flower_result.items() if k != "annotated_image_bytes"}
 
-    ts_key = f"timestamps.{timestamp}"
+    ts_key = f"timestamps.{make_ts_key(timestamp)}"
     await get_db()["row_data"].update_one(
         {"_id": ObjectId(document_id)},
         {"$set": {
@@ -215,7 +215,7 @@ async def classify_now(req: ClassifyNowRequest):
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    ts_entry = doc.get("timestamps", {}).get(req.timestamp, {})
+    ts_entry = doc.get("timestamps", {}).get(make_ts_key(req.timestamp), {})
     original_ids = ts_entry.get("original_images", [])
     if not original_ids:
         raise HTTPException(status_code=400, detail="No original images found for this timestamp.")
