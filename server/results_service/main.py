@@ -1,2 +1,274 @@
-# Results Service - FastAPI app
-# Endpoints: /getSummaryResults, /getDetailedRowData, /getTrends, /getImage/{file_id}
+"""
+Results Service  —  port 8003
+
+Endpoints
+---------
+GET /getSummaryResults              – Aggregate latest-timestamp data across all rows.
+GET /getDetailedRowData?row=<int>   – Full data for every distance in a row (image URLs included).
+GET /getImage/{file_id}             – Serve a GridFS image by file ID.
+GET /getTrends                      – Stub; returns placeholder message.
+"""
+
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+
+from bson import ObjectId
+from bson.errors import InvalidId
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from shared.config import CORS_ORIGINS
+from shared.db import close_db, get_db, get_gridfs_bucket, ping_db
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("results_service")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _key_to_ts(key: str) -> str:
+    """
+    Reverse of make_ts_key: convert a sanitized MongoDB key back to an
+    ISO 8601 timestamp string.
+
+    '2026-03-13T12:00:00_000000' → '2026-03-13T12:00:00.000000'
+
+    ISO 8601 timestamps never contain underscores, so this replace is safe.
+    """
+    return key.replace("_", ".")
+
+
+def _latest_ts_key(timestamps: dict) -> str | None:
+    """Return the lexicographically greatest key in a timestamps dict, or None."""
+    if not timestamps:
+        return None
+    return max(timestamps.keys())
+
+
+async def _read_gridfs_bytes(file_id_str: str) -> tuple[bytes, str]:
+    """
+    Download a GridFS file and return (bytes, content_type).
+    Raises HTTPException(404) if not found, 400 if the ID is malformed.
+    """
+    try:
+        oid = ObjectId(file_id_str)
+    except InvalidId as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid file_id: {file_id_str}") from exc
+
+    try:
+        bucket = get_gridfs_bucket()
+        stream = await bucket.open_download_stream(oid)
+        data = await stream.read()
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Image not found: {file_id_str}") from exc
+
+    # Infer content-type from the filename stored in GridFS
+    filename: str = getattr(stream, "filename", "") or ""
+    if filename.lower().endswith(".png"):
+        ct = "image/png"
+    else:
+        ct = "image/jpeg"
+
+    return data, ct
+
+
+def _image_urls(file_ids: list) -> list[str]:
+    """Convert a list of GridFS file_id strings/ObjectIds to /getImage/ URL paths."""
+    return [f"/getImage/{fid}" for fid in file_ids]
+
+
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ok = await ping_db()
+    logger.info("MongoDB connection: %s", "ok" if ok else "FAILED")
+    yield
+    await close_db()
+    logger.info("Results Service shutdown complete.")
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="Results Service", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ---------------------------------------------------------------------------
+# GET /getSummaryResults
+# ---------------------------------------------------------------------------
+
+@app.get("/getSummaryResults")
+async def get_summary_results():
+    """
+    Aggregate the latest-timestamp classification data across all row_data
+    documents.  Image arrays are excluded — only counts and summaries.
+    """
+    collection = get_db()["row_data"]
+    docs = await collection.find(
+        {},
+        {
+            "greenhouse_row": 1,
+            "distanceFromRowStart": 1,
+            "timestamps": 1,
+        },
+    ).to_list(length=None)
+
+    # Aggregation accumulators
+    total_tomatoes: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
+    total_flowers: dict[str, int] = {"0": 0, "1": 0, "2": 0}
+
+    # Build per-row map: row_number → list of distance entries
+    rows_map: dict[int, list[dict]] = {}
+
+    for doc in docs:
+        row_num: int = doc["greenhouse_row"]
+        distance: float = doc["distanceFromRowStart"]
+        timestamps: dict = doc.get("timestamps", {})
+
+        ts_key = _latest_ts_key(timestamps)
+        if ts_key is None:
+            continue
+
+        ts_entry = timestamps[ts_key]
+        tomato_cls = ts_entry.get("tomato_classification")
+        flower_cls = ts_entry.get("flower_classification")
+
+        # Skip locations that haven't been classified yet
+        if not tomato_cls or not flower_cls:
+            continue
+
+        tomato_summary = tomato_cls.get("summary", {})
+        flower_stage_counts = flower_cls.get("stage_counts", {})
+
+        # Accumulate greenhouse-wide totals
+        by_class = tomato_summary.get("by_class", {})
+        for label in ("Ripe", "Half_Ripe", "Unripe"):
+            total_tomatoes[label] += by_class.get(label, 0)
+
+        for stage_key in ("0", "1", "2"):
+            total_flowers[stage_key] += flower_stage_counts.get(stage_key, 0)
+
+        # Per-row distance entry
+        distance_entry = {
+            "distanceFromRowStart": distance,
+            "latest_timestamp": _key_to_ts(ts_key),
+            "tomato_summary": tomato_summary,
+            "flower_summary": {
+                "total_flowers":  flower_cls.get("total_flowers", 0),
+                "stage_counts":   flower_stage_counts,
+            },
+        }
+        rows_map.setdefault(row_num, []).append(distance_entry)
+
+    # Sort distances within each row; sort rows by row number
+    rows = [
+        {
+            "greenhouse_row": row_num,
+            "distances": sorted(entries, key=lambda e: e["distanceFromRowStart"]),
+        }
+        for row_num, entries in sorted(rows_map.items())
+    ]
+
+    return {
+        "total_tomatoes":      total_tomatoes,
+        "total_flowers":       total_flowers,
+        "total_tomato_count":  sum(total_tomatoes.values()),
+        "total_flower_count":  sum(total_flowers.values()),
+        "rows":                rows,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /getDetailedRowData
+# ---------------------------------------------------------------------------
+
+@app.get("/getDetailedRowData")
+async def get_detailed_row_data(row: int = Query(..., description="Greenhouse row number")):
+    """
+    Return full classification data and image URLs for every distance point
+    in the requested row, sorted by distanceFromRowStart.
+    """
+    collection = get_db()["row_data"]
+    docs = await collection.find(
+        {"greenhouse_row": row}
+    ).to_list(length=None)
+
+    if not docs:
+        raise HTTPException(status_code=404, detail=f"No data found for row {row}.")
+
+    distances: list[dict] = []
+
+    for doc in sorted(docs, key=lambda d: d["distanceFromRowStart"]):
+        timestamps: dict = doc.get("timestamps", {})
+        ts_key = _latest_ts_key(timestamps)
+        if ts_key is None:
+            continue
+
+        ts_entry = timestamps[ts_key]
+
+        distance_entry = {
+            "distanceFromRowStart":  doc["distanceFromRowStart"],
+            "latest_timestamp":      _key_to_ts(ts_key),
+            "tomato_classification": ts_entry.get("tomato_classification"),
+            "flower_classification": ts_entry.get("flower_classification"),
+            "images": {
+                "original":         _image_urls(ts_entry.get("original_images", [])),
+                "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
+                "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+            },
+        }
+        distances.append(distance_entry)
+
+    return {
+        "greenhouse_row": row,
+        "distances": distances,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /getImage/{file_id}
+# ---------------------------------------------------------------------------
+
+@app.get("/getImage/{file_id}")
+async def get_image(file_id: str):
+    """Serve a GridFS image by its file ID."""
+    data, content_type = await _read_gridfs_bytes(file_id)
+    return Response(content=data, media_type=content_type)
+
+
+# ---------------------------------------------------------------------------
+# GET /getTrends  (stub)
+# ---------------------------------------------------------------------------
+
+@app.get("/getTrends")
+async def get_trends():
+    """Placeholder — trends over time coming in a future release."""
+    return {"message": "Trends endpoint coming soon", "data": None}
+
+
+# ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health():
+    db_ok = await ping_db()
+    return {"status": "ok", "db": db_ok}
