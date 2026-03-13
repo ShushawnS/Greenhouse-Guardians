@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+motor
+pymongo
+python-multipart
+ultralytics
+huggingface_hub
+opencv-python-headless
+Pillow
+numpy

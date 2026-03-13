@@ -1,0 +1,1 @@
+// Scrollable image gallery component
