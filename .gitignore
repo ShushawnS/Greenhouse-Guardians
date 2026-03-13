@@ -12,9 +12,10 @@ server/models/*.pt
 client/node_modules/
 client/dist/
 
-# Environment
+# Environment — never commit real credentials
 .env
 *.env.local
+server/.env          # real secrets go here; use server/.env.example as template
 
 # IDE
 .vscode/

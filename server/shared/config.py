@@ -1,10 +1,11 @@
 import os
+from dotenv import load_dotenv
+
+# Load server/.env (one level above this file's directory: shared/ → server/)
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # MongoDB
-MONGO_URI = os.getenv(
-    "MONGO_URI",
-    "",
-)
+MONGO_URI = os.environ["MONGO_URI"]           # required — must be in .env
 DB_NAME = os.getenv("DB_NAME", "greenhouse_guardians")
 GRIDFS_BUCKET_NAME = "images"
 
@@ -30,6 +31,7 @@ FLOWER_HF_FILENAME = "best.pt"
 # Classification classes
 TOMATO_CLASSES = {0: "Unripe", 1: "Half_Ripe", 2: "Ripe"}
 FLOWER_CLASSES = {0: "Stage_0", 1: "Stage_1", 2: "Stage_2"}
+
 
 def make_ts_key(timestamp: str) -> str:
     """
