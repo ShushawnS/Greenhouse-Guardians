@@ -6,7 +6,8 @@ import ChartCard from '../components/ChartCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 
 const TOMATO_COLORS = { Ripe: '#22c55e', Half_Ripe: '#eab308', Unripe: '#ef4444' }
-const FLOWER_COLORS = { '0': '#3b82f6', '1': '#a855f7', '2': '#f97316' }
+const FLOWER_COLORS  = { '0': '#3b82f6', '1': '#a855f7', '2': '#f97316' }
+const FLOWER_LABELS  = { '0': 'Bud', '1': 'Anthesis', '2': 'Post-Anthesis' }
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -41,16 +42,16 @@ export default function Dashboard() {
     { name: 'Unripe',    count: Unripe,    fill: TOMATO_COLORS.Unripe },
   ]
   const flowerChartData = [
-    { name: 'Stage 0', count: total_flowers['0'] || 0, fill: FLOWER_COLORS['0'] },
-    { name: 'Stage 1', count: total_flowers['1'] || 0, fill: FLOWER_COLORS['1'] },
-    { name: 'Stage 2', count: total_flowers['2'] || 0, fill: FLOWER_COLORS['2'] },
+    { name: FLOWER_LABELS['0'], count: total_flowers['0'] || 0, fill: FLOWER_COLORS['0'] },
+    { name: FLOWER_LABELS['1'], count: total_flowers['1'] || 0, fill: FLOWER_COLORS['1'] },
+    { name: FLOWER_LABELS['2'], count: total_flowers['2'] || 0, fill: FLOWER_COLORS['2'] },
   ]
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-green-800">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Overview of your greenhouse \u2014 latest data from all rows</p>
+        <p className="text-sm text-gray-500 mt-1">Overview of your greenhouse latest data from all rows</p>
       </div>
 
       {/* Stat cards */}
@@ -68,9 +69,9 @@ export default function Dashboard() {
           title="Total Flowers"
           value={total_flower_count.toLocaleString()}
           breakdown={[
-            { label: 'Stage 0', count: total_flowers['0'] || 0, color: FLOWER_COLORS['0'] },
-            { label: 'Stage 1', count: total_flowers['1'] || 0, color: FLOWER_COLORS['1'] },
-            { label: 'Stage 2', count: total_flowers['2'] || 0, color: FLOWER_COLORS['2'] },
+            { label: FLOWER_LABELS['0'], count: total_flowers['0'] || 0, color: FLOWER_COLORS['0'] },
+            { label: FLOWER_LABELS['1'], count: total_flowers['1'] || 0, color: FLOWER_COLORS['1'] },
+            { label: FLOWER_LABELS['2'], count: total_flowers['2'] || 0, color: FLOWER_COLORS['2'] },
           ]}
         />
         <StatCard
@@ -165,7 +166,7 @@ export default function Dashboard() {
                         return (
                           <tr key={i} className="text-gray-600">
                             <td className="py-2 pr-4 font-medium">{d.distanceFromRowStart}m</td>
-                            <td className="py-2 pr-4 text-gray-400 text-xs">{new Date(d.latest_timestamp).toLocaleString()}</td>
+                            <td className="py-2 pr-4 text-gray-400 text-xs">{new Date(d.latest_timestamp).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                             <td className="py-2 pr-4"><span className="text-green-600 font-medium">{bc.Ripe || 0}</span></td>
                             <td className="py-2 pr-4"><span className="text-yellow-600 font-medium">{bc.Half_Ripe || 0}</span></td>
                             <td className="py-2 pr-4"><span className="text-red-500 font-medium">{bc.Unripe || 0}</span></td>

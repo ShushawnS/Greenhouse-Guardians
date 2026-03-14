@@ -3,6 +3,20 @@ import { demoClassify, uploadClassify, getImageUrl } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageGallery from '../components/ImageGallery'
 
+const FLOWER_STAGE_LABELS = { '0': 'Bud', '1': 'Anthesis', '2': 'Post-Anthesis' }
+
+function normalizeTomatoDetections(detections = []) {
+  return detections.map(d => ({ bbox: d.bbox, label: d.label, confidence: d.confidence }))
+}
+
+function normalizeFlowerDetections(flowers = []) {
+  return flowers.map(f => ({
+    bbox: { x1: f.bounding_box[0], y1: f.bounding_box[1], x2: f.bounding_box[2], y2: f.bounding_box[3] },
+    label: FLOWER_STAGE_LABELS[String(f.stage)] ?? `Stage ${f.stage}`,
+    confidence: f.confidence,
+  }))
+}
+
 function formatBytes(n) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -69,23 +83,28 @@ export default function ClassifyUpload() {
     }
   }
 
-  // Build image galleries from results
-  let tomatoImages = [], flowerImages = []
+  // Build image galleries from results (with detections for bbox overlay in modal)
+  let originalImages = [], tomatoImages = [], flowerImages = []
   if (results) {
     const { mode, data } = results
+    const tDets = normalizeTomatoDetections(data.tomato_classification?.detections)
+    const fDets = normalizeFlowerDetections(data.flower_classification?.flowers)
     if (mode === 'demo') {
       tomatoImages = (data.annotated_images?.tomato || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`, label: `Image ${i + 1}`
+        src: `data:image/jpeg;base64,${b64}`, label: `Image ${i + 1}`, detections: tDets,
       }))
       flowerImages = (data.annotated_images?.flower || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`, label: `Image ${i + 1}`
+        src: `data:image/jpeg;base64,${b64}`, label: `Image ${i + 1}`, detections: fDets,
       }))
     } else {
+      originalImages = (data.original_image_ids || []).map((id, i) => ({
+        src: getImageUrl(id), label: `Image ${i + 1}`, detections: [],
+      }))
       tomatoImages = (data.tomato_annotated_ids || []).map((id, i) => ({
-        src: getImageUrl(id), label: `Image ${i + 1}`
+        src: getImageUrl(id), label: `Image ${i + 1}`, detections: tDets,
       }))
       flowerImages = (data.flower_annotated_ids || []).map((id, i) => ({
-        src: getImageUrl(id), label: `Image ${i + 1}`
+        src: getImageUrl(id), label: `Image ${i + 1}`, detections: fDets,
       }))
     }
   }
@@ -251,9 +270,9 @@ export default function ClassifyUpload() {
                 <p className="text-3xl font-bold text-green-800 mb-4">{flowerSummary?.total_flowers || 0} detected</p>
                 <div className="space-y-2">
                   {[
-                    { label: 'Stage 0', color: '#3b82f6', count: flowerSummary?.stage_counts?.['0'] || 0 },
-                    { label: 'Stage 1', color: '#a855f7', count: flowerSummary?.stage_counts?.['1'] || 0 },
-                    { label: 'Stage 2', color: '#f97316', count: flowerSummary?.stage_counts?.['2'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['0'], color: '#3b82f6', count: flowerSummary?.stage_counts?.['0'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['1'], color: '#a855f7', count: flowerSummary?.stage_counts?.['1'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['2'], color: '#f97316', count: flowerSummary?.stage_counts?.['2'] || 0 },
                   ].map(({ label, color, count }) => (
                     <div key={label} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
@@ -268,15 +287,48 @@ export default function ClassifyUpload() {
             </div>
           )}
 
-          {/* Annotated images */}
+          {/* Image boxes */}
           <div className="space-y-4">
-            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6 space-y-3">
-              <h3 className="text-base font-semibold text-green-700">Tomato Annotations</h3>
-              <ImageGallery images={tomatoImages} emptyMessage="No annotated tomato images" />
+            {/* Tomatoes */}
+            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
+              <h3 className="text-base font-semibold text-green-700 mb-4">Tomatoes</h3>
+              <div className="grid grid-cols-2 gap-6">
+                {originalImages.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
+                    <ImageGallery images={originalImages} emptyMessage="No images" />
+                  </div>
+                )}
+                <div className={originalImages.length > 0 ? '' : 'col-span-2'}>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
+                  <ImageGallery images={tomatoImages} emptyMessage="No annotated images" />
+                </div>
+              </div>
             </div>
-            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6 space-y-3">
-              <h3 className="text-base font-semibold text-green-700">Flower Annotations</h3>
-              <ImageGallery images={flowerImages} emptyMessage="No annotated flower images" />
+
+            {/* Flowers */}
+            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
+              <h3 className="text-base font-semibold text-green-700 mb-4">Flowers</h3>
+              <div className="grid grid-cols-2 gap-6">
+                {originalImages.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
+                    <ImageGallery images={originalImages} emptyMessage="No images" />
+                  </div>
+                )}
+                <div className={originalImages.length > 0 ? '' : 'col-span-2'}>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
+                  <ImageGallery images={flowerImages} emptyMessage="No annotated images" />
+                </div>
+              </div>
+            </div>
+
+            {/* Depth */}
+            <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-6">
+              <h3 className="text-base font-semibold text-gray-400 mb-4">
+                Depth <span className="text-xs font-normal text-gray-300">(coming soon)</span>
+              </h3>
+              <p className="text-sm text-gray-300 text-center py-4">Depth analysis not yet available</p>
             </div>
           </div>
         </div>

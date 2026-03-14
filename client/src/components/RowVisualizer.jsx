@@ -8,7 +8,7 @@ export default function RowVisualizer({ distances = [], selectedIdx, onSelect })
   }
 
   const dists = distances.map(d => d.distanceFromRowStart)
-  const minD = Math.min(...dists)
+  const minD = 0
   const maxD = Math.max(...dists)
   const range = maxD - minD || 1
 

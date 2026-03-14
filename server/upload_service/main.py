@@ -166,8 +166,8 @@ async def upload_data(
     Store images to GridFS, persist a timestamp entry in row_data,
     and asynchronously enqueue a classification job.
     """
-    if len(images) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 images are required.")
+    if len(images) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 image is required.")
 
     # 1. Find or create the row document
     doc = await _find_or_create_row_doc(greenhouse_row, distanceFromRowStart)
@@ -231,8 +231,8 @@ async def upload_classify(
     then poll MongoDB until both classification fields are populated.
     Returns full classification results and annotated image GridFS IDs.
     """
-    if len(images) < 2:
-        raise HTTPException(status_code=400, detail="At least 2 images are required.")
+    if len(images) < 1:
+        raise HTTPException(status_code=400, detail="At least 1 image is required.")
 
     # 1 & 2. Find/create document + store images
     doc = await _find_or_create_row_doc(greenhouse_row, distanceFromRowStart)
