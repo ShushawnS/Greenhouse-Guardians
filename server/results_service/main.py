@@ -255,6 +255,44 @@ async def get_image(file_id: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /getAllData
+# ---------------------------------------------------------------------------
+
+@app.get("/getAllData")
+async def get_all_data():
+    """
+    Return every document in row_data with ALL timestamps/runs and image URLs.
+    Used by the Ayush Testing tab to display raw DB contents.
+    """
+    collection = get_db()["row_data"]
+    docs = await collection.find({}).to_list(length=None)
+
+    result = []
+    for doc in sorted(docs, key=lambda d: (d["greenhouse_row"], d["distanceFromRowStart"])):
+        timestamps: dict = doc.get("timestamps", {})
+        runs = []
+        for ts_key in sorted(timestamps.keys()):
+            ts_entry = timestamps[ts_key]
+            runs.append({
+                "timestamp": _key_to_ts(ts_key),
+                "tomato_classification": ts_entry.get("tomato_classification"),
+                "flower_classification": ts_entry.get("flower_classification"),
+                "images": {
+                    "original":         _image_urls(ts_entry.get("original_images", [])),
+                    "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
+                    "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+                },
+            })
+        result.append({
+            "greenhouse_row":       doc["greenhouse_row"],
+            "distanceFromRowStart": doc["distanceFromRowStart"],
+            "runs":                 runs,
+        })
+
+    return {"documents": result}
+
+
+# ---------------------------------------------------------------------------
 # GET /getTrends  (stub)
 # ---------------------------------------------------------------------------
 

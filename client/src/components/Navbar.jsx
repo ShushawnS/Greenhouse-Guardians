@@ -11,6 +11,7 @@ const links = [
   { to: '/classify', label: 'Classify & Upload' },
   { to: '/rows',     label: 'Row Details' },
   { to: '/trends',   label: 'Trends' },
+  { to: '/ayush',    label: 'Ayush Testing' },
 ]
 
 export default function Navbar() {

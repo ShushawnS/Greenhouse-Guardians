@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import ClassifyUpload from './pages/ClassifyUpload'
 import RowDetails from './pages/RowDetails'
 import Trends from './pages/Trends'
+import AyushTesting from './pages/AyushTesting'
 
 function Layout({ children }) {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/classify" element={<ClassifyUpload />} />
           <Route path="/rows" element={<RowDetails />} />
           <Route path="/trends" element={<Trends />} />
+          <Route path="/ayush" element={<AyushTesting />} />
         </Routes>
       </Layout>
     </BrowserRouter>
