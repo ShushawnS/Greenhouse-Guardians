@@ -2,8 +2,9 @@ import { useState, useRef, useCallback } from 'react'
 import { demoClassify, uploadClassify, getImageUrl } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageGallery from '../components/ImageGallery'
+import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 
-const FLOWER_STAGE_LABELS = { '0': 'Bud', '1': 'Anthesis', '2': 'Post-Anthesis' }
+const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
 function normalizeTomatoDetections(detections = []) {
   return detections.map(d => ({ bbox: d.bbox, label: d.label, confidence: d.confidence }))
@@ -25,6 +26,26 @@ function formatBytes(n) {
 
 function now() {
   return new Date().toISOString().slice(0, 26)
+}
+
+/* ── Reusable label + input ── */
+function Field({ label, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ fontSize: 11, fontWeight: 500, color: C.t2, letterSpacing: '0.02em' }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+const inputStyle = {
+  width: '100%', boxSizing: 'border-box',
+  border: `1px solid ${C.border2}`,
+  borderRadius: 7, padding: '8px 12px',
+  fontSize: 13, color: C.t1,
+  background: C.bg1,
+  outline: 'none',
+  fontFamily: 'inherit',
 }
 
 export default function ClassifyUpload() {
@@ -83,7 +104,6 @@ export default function ClassifyUpload() {
     }
   }
 
-  // Build image galleries from results (with detections for bbox overlay in modal)
   let originalImages = [], tomatoImages = [], flowerImages = []
   if (results) {
     const { mode, data } = results
@@ -112,102 +132,123 @@ export default function ClassifyUpload() {
   const tomatoSummary = results?.data?.tomato_classification?.summary
   const flowerSummary = results?.data?.flower_classification
 
+  const card = {
+    background: C.bg1, border: `1px solid ${C.border}`,
+    borderRadius: 10, padding: '20px 22px',
+  }
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-green-800">Classify &amp; Upload</h1>
-        <p className="text-sm text-gray-500 mt-1">Upload greenhouse images for YOLOv8 tomato and flower classification</p>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Classify &amp; Upload</h1>
+        <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Upload greenhouse images for YOLOv8 tomato and flower classification</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
         {/* Demo mode toggle */}
-        <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-700">Demo Mode</p>
-              <p className="text-sm text-gray-400 mt-0.5">Classify without saving to the database</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setDemoMode(v => !v)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                demoMode ? 'bg-green-500' : 'bg-gray-200'
-              }`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                demoMode ? 'translate-x-6' : 'translate-x-1'
-              }`} />
-            </button>
+        <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Demo Mode</p>
+            <p style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>Classify without saving to the database</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setDemoMode(v => !v)}
+            style={{
+              position: 'relative', width: 38, height: 22, borderRadius: 11,
+              background: demoMode ? C.green : C.bg4,
+              border: 'none', cursor: 'pointer', flexShrink: 0,
+              transition: 'background 0.2s',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 3, width: 16, height: 16,
+              borderRadius: '50%', background: C.bg1,
+              left: demoMode ? 19 : 3,
+              transition: 'left 0.2s',
+            }} />
+          </button>
         </div>
 
-        {/* Row / Distance / Timestamp — hidden in demo mode */}
+        {/* Location + time — hidden in demo mode */}
         {!demoMode && (
-          <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-green-700">Location &amp; Time</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1.5">Greenhouse Row</label>
-                <input
-                  type="number" min="1" value={row} onChange={e => setRow(e.target.value)}
-                  placeholder="e.g. 1"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1.5">Distance from Row Start (m)</label>
-                <input
-                  type="number" min="0" step="0.1" value={distance} onChange={e => setDistance(e.target.value)}
-                  placeholder="e.g. 10.5"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1.5">Timestamp</label>
-                <input
-                  type="text" value={timestamp} onChange={e => setTimestamp(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent"
-                />
-              </div>
+          <div style={card}>
+            <div style={{ fontSize: 12, fontWeight: 500, color: C.t2, marginBottom: 14, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Location &amp; Time
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <Field label="Greenhouse Row">
+                <input type="number" min="1" value={row} onChange={e => setRow(e.target.value)}
+                  placeholder="e.g. 1" style={inputStyle} />
+              </Field>
+              <Field label="Distance from Row Start (m)">
+                <input type="number" min="0" step="0.1" value={distance} onChange={e => setDistance(e.target.value)}
+                  placeholder="e.g. 10.5" style={inputStyle} />
+              </Field>
+              <Field label="Timestamp">
+                <input type="text" value={timestamp} onChange={e => setTimestamp(e.target.value)}
+                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 12 }} />
+              </Field>
             </div>
           </div>
         )}
 
         {/* Dropzone */}
-        <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6 space-y-4">
-          <h3 className="text-lg font-semibold text-green-700">Images</h3>
+        <div style={card}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: C.t2, marginBottom: 14, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Images
+          </div>
           <div
             onDragOver={e => { e.preventDefault(); setDragging(true) }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             onClick={() => fileInput.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer transition-colors ${
-              dragging ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-green-300 hover:bg-green-50/50'
-            }`}
+            style={{
+              border: `2px dashed ${dragging ? C.green : C.border2}`,
+              borderRadius: 8,
+              padding: '36px 24px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+              background: dragging ? C.greenDim : 'transparent',
+              transition: 'border-color 0.15s, background 0.15s',
+            }}
           >
-            <svg className="w-10 h-10 text-green-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            <svg width="28" height="28" fill="none" stroke={C.t3} strokeWidth="1.5" viewBox="0 0 24 24" style={{ marginBottom: 10 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <p className="text-sm font-medium text-gray-600">Drop images here or <span className="text-green-600 underline">browse</span></p>
-            <p className="text-xs text-gray-400 mt-1">Supports JPG, PNG, WEBP</p>
-            <input ref={fileInput} type="file" accept="image/*" multiple className="hidden"
+            <p style={{ fontSize: 13, color: C.t2 }}>
+              Drop images here or{' '}
+              <span style={{ color: C.green, textDecoration: 'underline' }}>browse</span>
+            </p>
+            <p style={{ fontSize: 11, color: C.t3, marginTop: 4 }}>Supports JPG, PNG, WEBP</p>
+            <input ref={fileInput} type="file" accept="image/*" multiple style={{ display: 'none' }}
               onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
           </div>
 
           {files.length > 0 && (
-            <ul className="space-y-2">
+            <ul style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               {files.map((f, i) => (
-                <li key={i} className="flex items-center justify-between bg-green-50 rounded-lg px-4 py-2.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <li key={i} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: C.bg2, borderRadius: 7, padding: '8px 12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <svg width="14" height="14" fill={C.green} viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
                       <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V7.414A2 2 0 0017.414 6L14 2.586A2 2 0 0012.586 2H6a2 2 0 00-2 2v1zm2 0v1h6V3H6zm10 4v8H4V5h6v2a2 2 0 002 2h2V7z" clipRule="evenodd" />
                     </svg>
-                    <span className="text-sm text-gray-700 truncate">{f.name}</span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">{formatBytes(f.size)}</span>
+                    <span style={{ fontSize: 12, color: C.t1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    <span style={{ fontSize: 11, color: C.t3, flexShrink: 0 }}>{formatBytes(f.size)}</span>
                   </div>
-                  <button type="button" onClick={() => removeFile(i)} className="ml-3 text-gray-300 hover:text-red-400 transition-colors flex-shrink-0">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <button type="button" onClick={() => removeFile(i)} style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: C.t3, padding: 0, marginLeft: 8, flexShrink: 0,
+                    display: 'flex', alignItems: 'center',
+                  }}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </li>
@@ -217,69 +258,95 @@ export default function ClassifyUpload() {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-sm text-red-700">{error}</div>
+          <div style={{
+            background: C.redDim, border: `1px solid ${C.red}44`,
+            borderRadius: 8, padding: '12px 16px',
+            fontSize: 12, color: C.red,
+          }}>
+            {error}
+          </div>
         )}
 
         <button
-          type="submit" disabled={loading || !files.length}
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+          type="submit"
+          disabled={loading || !files.length}
+          style={{
+            width: '100%',
+            background: loading || !files.length ? C.bg3 : C.green,
+            color: loading || !files.length ? C.t3 : '#fff',
+            border: 'none', borderRadius: 8, padding: '12px 0',
+            fontSize: 13, fontWeight: 500, cursor: loading || !files.length ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit', letterSpacing: '0.01em',
+            transition: 'background 0.15s',
+          }}
         >
-          {loading ? 'Classifying\u2026' : demoMode ? 'Run Demo Classification' : 'Classify & Save'}
+          {loading ? 'Classifying…' : demoMode ? 'Run Demo Classification' : 'Classify & Save'}
         </button>
       </form>
 
-      {/* Loading spinner */}
-      {loading && <LoadingSpinner message="Running YOLOv8 inference\u2026 this may take up to 30 seconds." />}
+      {loading && <LoadingSpinner message="Running YOLOv8 inference… this may take up to 30 seconds." />}
 
       {/* Results */}
       {results && !loading && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Success header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 4 }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: '50%',
+              background: C.greenDim, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="11" height="11" fill="none" stroke={C.green} strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold text-green-700">Classification Results</h2>
+            <span style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Classification Results</span>
           </div>
 
           {/* Summary cards */}
           {tomatoSummary && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-                <p className="text-sm font-medium text-gray-500 mb-3">Tomato Summary</p>
-                <p className="text-3xl font-bold text-green-800 mb-4">{tomatoSummary.total} detected</p>
-                <div className="space-y-2">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {/* Tomato summary */}
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Tomato Summary</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
+                  {tomatoSummary.total} detected
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
                   {[
-                    { label: 'Ripe',      color: '#22c55e', count: tomatoSummary.by_class?.Ripe || 0 },
-                    { label: 'Half Ripe', color: '#eab308', count: tomatoSummary.by_class?.Half_Ripe || 0 },
-                    { label: 'Unripe',    color: '#ef4444', count: tomatoSummary.by_class?.Unripe || 0 },
+                    { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      count: tomatoSummary.by_class?.Ripe || 0 },
+                    { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, count: tomatoSummary.by_class?.Half_Ripe || 0 },
+                    { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    count: tomatoSummary.by_class?.Unripe || 0 },
                   ].map(({ label, color, count }) => (
-                    <div key={label} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                        <span className="text-gray-600">{label}</span>
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
                       </div>
-                      <span className="font-semibold text-gray-800">{count}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-                <p className="text-sm font-medium text-gray-500 mb-3">Flower Summary</p>
-                <p className="text-3xl font-bold text-green-800 mb-4">{flowerSummary?.total_flowers || 0} detected</p>
-                <div className="space-y-2">
+
+              {/* Flower summary */}
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Flower Summary</div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
+                  {flowerSummary?.total_flowers || 0} detected
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
                   {[
-                    { label: FLOWER_STAGE_LABELS['0'], color: '#3b82f6', count: flowerSummary?.stage_counts?.['0'] || 0 },
-                    { label: FLOWER_STAGE_LABELS['1'], color: '#a855f7', count: flowerSummary?.stage_counts?.['1'] || 0 },
-                    { label: FLOWER_STAGE_LABELS['2'], color: '#f97316', count: flowerSummary?.stage_counts?.['2'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['0'], color: FLOWER_COLORS['0'], count: flowerSummary?.stage_counts?.['0'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['1'], color: FLOWER_COLORS['1'], count: flowerSummary?.stage_counts?.['1'] || 0 },
+                    { label: FLOWER_STAGE_LABELS['2'], color: FLOWER_COLORS['2'], count: flowerSummary?.stage_counts?.['2'] || 0 },
                   ].map(({ label, color, count }) => (
-                    <div key={label} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                        <span className="text-gray-600">{label}</span>
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
                       </div>
-                      <span className="font-semibold text-gray-800">{count}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
                     </div>
                   ))}
                 </div>
@@ -287,49 +354,35 @@ export default function ClassifyUpload() {
             </div>
           )}
 
-          {/* Image boxes */}
-          <div className="space-y-4">
-            {/* Tomatoes */}
-            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-              <h3 className="text-base font-semibold text-green-700 mb-4">Tomatoes</h3>
-              <div className="grid grid-cols-2 gap-6">
+          {/* Annotated image panels */}
+          {[
+            { title: 'Tomatoes', annotated: tomatoImages },
+            { title: 'Flowers',  annotated: flowerImages },
+          ].map(({ title, annotated }) => (
+            <div key={title} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: originalImages.length > 0 ? '1fr 1fr' : '1fr', gap: 20 }}>
                 {originalImages.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
                     <ImageGallery images={originalImages} emptyMessage="No images" />
                   </div>
                 )}
-                <div className={originalImages.length > 0 ? '' : 'col-span-2'}>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
-                  <ImageGallery images={tomatoImages} emptyMessage="No annotated images" />
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
+                  <ImageGallery images={annotated} emptyMessage="No annotated images" />
                 </div>
               </div>
             </div>
+          ))}
 
-            {/* Flowers */}
-            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-              <h3 className="text-base font-semibold text-green-700 mb-4">Flowers</h3>
-              <div className="grid grid-cols-2 gap-6">
-                {originalImages.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
-                    <ImageGallery images={originalImages} emptyMessage="No images" />
-                  </div>
-                )}
-                <div className={originalImages.length > 0 ? '' : 'col-span-2'}>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
-                  <ImageGallery images={flowerImages} emptyMessage="No annotated images" />
-                </div>
-              </div>
+          {/* Depth — coming soon */}
+          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px', opacity: 0.5 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: C.t2, marginBottom: 6 }}>
+              Depth{' '}
+              <span style={{ fontSize: 10, background: C.bg3, borderRadius: 4, padding: '2px 7px', color: C.t3 }}>coming soon</span>
             </div>
-
-            {/* Depth */}
-            <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-6">
-              <h3 className="text-base font-semibold text-gray-400 mb-4">
-                Depth <span className="text-xs font-normal text-gray-300">(coming soon)</span>
-              </h3>
-              <p className="text-sm text-gray-300 text-center py-4">Depth analysis not yet available</p>
-            </div>
+            <p style={{ fontSize: 12, color: C.t3, textAlign: 'center', padding: '16px 0' }}>Depth analysis not yet available</p>
           </div>
         </div>
       )}

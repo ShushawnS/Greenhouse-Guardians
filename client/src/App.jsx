@@ -8,9 +8,9 @@ import AyushTesting from './pages/AyushTesting'
 
 function Layout({ children }) {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ minHeight: '100vh', background: '#f9f7f4' }}>
       <Navbar />
-      <main className="pt-16">{children}</main>
+      <main style={{ paddingTop: 48 }}>{children}</main>
     </div>
   )
 }

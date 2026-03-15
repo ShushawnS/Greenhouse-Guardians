@@ -1,8 +1,17 @@
-export default function LoadingSpinner({ message = 'Loading\u2026' }) {
+import { C } from '../tokens'
+
+export default function LoadingSpinner({ message = 'Loading…' }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12">
-      <div className="w-10 h-10 border-4 border-green-200 border-t-green-600 rounded-full animate-spin" />
-      <p className="text-sm text-gray-500">{message}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '48px 24px' }}>
+      <div style={{
+        width: 28, height: 28,
+        border: `2px solid ${C.border2}`,
+        borderTopColor: C.green,
+        borderRadius: '50%',
+        animation: 'spin 0.7s linear infinite',
+      }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <p style={{ fontSize: 12, color: C.t3 }}>{message}</p>
     </div>
   )
 }

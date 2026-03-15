@@ -1,64 +1,129 @@
+import { C } from '../tokens'
+
+function getMarkerColor(d) {
+  const tc = d.tomato_classification
+  if (!tc) return C.t3
+  const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = tc.summary?.by_class || {}
+  const total = Ripe + Half_Ripe + Unripe
+  if (!total) return C.t3
+  if (Ripe / total >= 0.5)      return C.ripe
+  if (Half_Ripe / total >= 0.5) return C.halfRipe
+  return C.unripe
+}
+
 export default function RowVisualizer({ distances = [], selectedIdx, onSelect }) {
   if (!distances.length) {
     return (
-      <div className="flex items-center justify-center h-24 bg-gray-50 rounded-xl border border-gray-200">
-        <p className="text-sm text-gray-400">No data points for this row</p>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 72, background: C.bg2,
+        border: `1px solid ${C.border}`, borderRadius: 10,
+      }}>
+        <p style={{ fontSize: 12, color: C.t3 }}>No data points for this row</p>
       </div>
     )
   }
 
-  const dists = distances.map(d => d.distanceFromRowStart)
-  const minD = 0
-  const maxD = Math.max(...dists)
-  const range = maxD - minD || 1
-
-  const getMarkerColor = (d) => {
-    const tc = d.tomato_classification
-    if (!tc) return '#9ca3af'
-    const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = tc.summary?.by_class || {}
-    const total = Ripe + Half_Ripe + Unripe
-    if (!total) return '#9ca3af'
-    if (Ripe / total >= 0.5) return '#22c55e'
-    if (Half_Ripe / total >= 0.5) return '#eab308'
-    return '#ef4444'
-  }
+  const maxD  = Math.max(...distances.map(d => d.distanceFromRowStart)) || 1
+  const sel   = distances[selectedIdx]
 
   return (
-    <div className="relative px-8 py-6 bg-white border border-green-100 rounded-xl shadow-sm">
-      <p className="text-xs text-gray-400 mb-6 text-center">
-        Click a marker to view details &middot; Distance from row start (meters)
-      </p>
-      {/* Track line */}
-      <div className="relative h-2 bg-green-100 rounded-full mx-4">
-        <div className="absolute inset-0 bg-gradient-to-r from-green-200 to-green-400 rounded-full opacity-60" />
+    <div style={{
+      background: C.bg1, border: `1px solid ${C.border}`,
+      borderRadius: 10, padding: '18px 28px 30px',
+    }}>
+      {/* Header row: title on left, selected position on right */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Positions along row
+        </div>
+        {sel && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: getMarkerColor(sel), flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 12, color: C.t1, fontWeight: 500 }} className="num">
+              {sel.distanceFromRowStart}m
+            </span>
+            <span style={{ fontSize: 11, color: C.t3 }}>selected</span>
+          </div>
+        )}
+      </div>
+
+      {/* Track */}
+      <div style={{ position: 'relative', height: 4, background: C.bg3, borderRadius: 2, margin: '0 10px' }}>
+        {/* Filled portion up to selected point */}
+        {sel && (
+          <div style={{
+            position: 'absolute', left: 0, top: 0, bottom: 0,
+            width: `${(sel.distanceFromRowStart / maxD) * 100}%`,
+            background: C.green + '55',
+            borderRadius: 2,
+            transition: 'width 0.25s ease',
+          }} />
+        )}
+
         {distances.map((d, i) => {
-          const pct = range === 0 ? 50 : ((d.distanceFromRowStart - minD) / range) * 100
+          const pct        = (d.distanceFromRowStart / maxD) * 100
           const isSelected = selectedIdx === i
-          const color = getMarkerColor(d)
+          const color      = getMarkerColor(d)
+
           return (
             <button
               key={i}
               onClick={() => onSelect(i)}
-              style={{ left: `${pct}%` }}
-              className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 focus:outline-none group"
               title={`${d.distanceFromRowStart}m`}
+              style={{
+                position: 'absolute', left: `${pct}%`, top: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                zIndex: isSelected ? 2 : 1,
+              }}
             >
-              <div
-                className={`rounded-full border-2 border-white shadow-md transition-all duration-150 ${
-                  isSelected ? 'w-7 h-7 ring-2 ring-offset-1 ring-green-500' : 'w-5 h-5 group-hover:w-6 group-hover:h-6'
-                }`}
-                style={{ backgroundColor: color }}
-              />
-              <span className={`absolute top-5 left-1/2 -translate-x-1/2 text-xs whitespace-nowrap font-medium ${
-                isSelected ? 'text-green-700' : 'text-gray-500'
-              }`}>
+              {/* Outer ring — only on selected */}
+              {isSelected && (
+                <div style={{
+                  position: 'absolute', top: '50%', left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: color + '22',
+                  border: `1.5px solid ${color}55`,
+                  transition: 'all 0.2s ease',
+                }} />
+              )}
+              {/* Dot */}
+              <div style={{
+                width:  isSelected ? 14 : 11,
+                height: isSelected ? 14 : 11,
+                borderRadius: '50%',
+                background: color,
+                border: `2px solid ${C.bg1}`,
+                boxShadow: isSelected
+                  ? `0 0 0 2px ${color}88`
+                  : '0 1px 3px rgba(28,25,23,0.15)',
+                transition: 'all 0.18s ease',
+                position: 'relative', zIndex: 1,
+              }} />
+
+              {/* Distance label below */}
+              <span style={{
+                position: 'absolute',
+                top: isSelected ? 18 : 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: 10,
+                color: isSelected ? C.t1 : C.t3,
+                fontWeight: isSelected ? 500 : 400,
+                whiteSpace: 'nowrap',
+                transition: 'color 0.18s, font-weight 0.18s',
+              }} className="num">
                 {d.distanceFromRowStart}m
               </span>
             </button>
           )
         })}
       </div>
-      <div className="mt-8" />
     </div>
   )
 }

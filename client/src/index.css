@@ -2,6 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Prevent scrollbar from causing layout shift ── */
+html { overflow-y: scroll; }
+
+/* ── Global base ── */
 body {
   font-family: "Inter", system-ui, sans-serif;
+  background-color: #f9f7f4;
+  color: #1c1917;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Page-enter animation — triggers on component mount ── */
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-in {
+  animation: pageIn 0.18s ease-out both;
+}
+
+/* ── Numeric values — tabular figures + tight tracking ── */
+.num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+}
+
+/* ── Tooltip hover info icon ── */
+.info-icon:hover .info-tooltip { display: block !important; }
+
+/* ── Subtle row hover for tables ── */
+.row-hover:hover { background: #f5f3ef; }
+
+/* ── Nav tab button resets ── */
+.tab-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tab-btn:focus-visible {
+  outline: 2px solid #3d6b4f;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Scrollbar — thin, warm ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4cfc5; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a09890; }

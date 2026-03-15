@@ -3,28 +3,25 @@ import { getDetailedRowData } from '../api'
 import RowVisualizer from '../components/RowVisualizer'
 import ImageGallery from '../components/ImageGallery'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 
 const ROW_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1)
-
-const FLOWER_STAGE_LABELS = { '0': 'Bud', '1': 'Anthesis', '2': 'Post-Anthesis' }
+const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
 function formatTs(ts) {
   if (!ts) return '—'
   return new Date(ts).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
   })
 }
 
-// Normalize tomato detections for bbox overlay
 function toTomatoDetections(classification) {
   return (classification?.detections || []).map(d => ({
-    bbox: d.bbox,
-    label: d.label,
-    confidence: d.confidence,
+    bbox: d.bbox, label: d.label, confidence: d.confidence,
   }))
 }
 
-// Normalize flower detections for bbox overlay
 function toFlowerDetections(classification) {
   return (classification?.flowers || []).map(f => ({
     bbox: { x1: f.bounding_box[0], y1: f.bounding_box[1], x2: f.bounding_box[2], y2: f.bounding_box[3] },
@@ -41,15 +38,74 @@ function toImgList(urls, labelPrefix, detections = []) {
   }))
 }
 
+/* ── Thin horizontal progress bar with label ── */
+function BreakdownBar({ label, count, total, color }) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
+          <span style={{ fontSize: 10, color: C.t3 }} className="num">{pct}%</span>
+        </div>
+      </div>
+      <div style={{ height: 4, background: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2, transition: 'width 0.35s ease' }} />
+      </div>
+    </div>
+  )
+}
+
+/* ── Segmented row selector ── */
+function RowSelector({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 11, fontWeight: 500, color: C.t3, letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+        Row
+      </span>
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        {ROW_OPTIONS.map(r => {
+          const active = value === r
+          return (
+            <button
+              key={r}
+              onClick={() => onChange(r)}
+              style={{
+                width: 30, height: 30,
+                borderRadius: 7,
+                background: active ? C.green : C.bg3,
+                color: active ? '#fff' : C.t2,
+                border: active ? `1px solid ${C.green}` : `1px solid ${C.border}`,
+                fontSize: 12, fontWeight: active ? 600 : 400,
+                cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'background 0.12s, color 0.12s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              {r}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function RowDetails() {
   const [selectedRow, setSelectedRow] = useState(1)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const [imageTab, setImageTab] = useState('tomatoes') // 'tomatoes' | 'flowers'
 
   useEffect(() => {
     setData(null); setSelectedIdx(0); setError(null); setLoading(true)
+    setImageTab('tomatoes')
     getDetailedRowData(selectedRow)
       .then(res => setData(res.data))
       .catch(err => {
@@ -62,7 +118,7 @@ export default function RowDetails() {
   const distances = data?.distances || []
   const selected = distances[selectedIdx] ?? null
 
-  // Row-level aggregate stats
+  /* Row-level aggregate totals */
   const rowTotals = distances.reduce((acc, d) => {
     const bc = d.tomato_classification?.summary?.by_class || {}
     acc.Ripe      += bc.Ripe      || 0
@@ -72,169 +128,238 @@ export default function RowDetails() {
     return acc
   }, { Ripe: 0, Half_Ripe: 0, Unripe: 0, flowers: 0 })
 
-  // Build image lists with detection data for bbox overlay in modal
+  const totalTomatoes = rowTotals.Ripe + rowTotals.Half_Ripe + rowTotals.Unripe
+
+  /* Selected point: images */
   const tomatoDetections = toTomatoDetections(selected?.tomato_classification)
   const flowerDetections  = toFlowerDetections(selected?.flower_classification)
-
   const originalImages        = selected ? toImgList(selected.images?.original,        'Original',  [])               : []
   const tomatoAnnotatedImages = selected ? toImgList(selected.images?.tomato_annotated, 'Annotated', tomatoDetections) : []
   const flowerAnnotatedImages = selected ? toImgList(selected.images?.flower_annotated, 'Annotated', flowerDetections) : []
 
+  /* Selected point: counts */
+  const selTomato = selected?.tomato_classification?.summary?.by_class || {}
+  const selTotalT = (selTomato.Ripe || 0) + (selTomato.Half_Ripe || 0) + (selTomato.Unripe || 0)
+  const selFlower = selected?.flower_classification?.stage_counts || {}
+  const selTotalF = Object.values(selFlower).reduce((s, v) => s + (v || 0), 0)
+
+  const card = { background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10 }
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-      {/* Header + row selector */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 className="text-2xl font-bold text-green-800">Row Details</h1>
-          <p className="text-sm text-gray-500 mt-1">Inspect classification results at each position along a row</p>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Row Details</h1>
+          <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Inspect classification results at each position along a row</p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-600">Greenhouse Row</label>
-          <select
-            value={selectedRow}
-            onChange={e => setSelectedRow(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
-          >
-            {ROW_OPTIONS.map(r => (
-              <option key={r} value={r}>Row {r}</option>
-            ))}
-          </select>
-        </div>
+        <RowSelector value={selectedRow} onChange={setSelectedRow} />
       </div>
 
-      {loading && <LoadingSpinner message={`Loading row ${selectedRow} data\u2026`} />}
+      {loading && <LoadingSpinner message={`Loading row ${selectedRow} data…`} />}
 
       {error && !loading && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-amber-700 text-sm">
+        <div style={{
+          background: C.amberDim, border: `1px solid ${C.amber}44`,
+          borderRadius: 8, padding: '14px 18px', fontSize: 12, color: C.amber,
+        }}>
           {error}
         </div>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && distances.length > 0 && (
         <>
-          {/* Row summary stats — at the top */}
-          {distances.length > 0 && (
-            <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-green-700 mb-4">Row {selectedRow} Summary</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+          {/* ── Row summary card ── */}
+          <div style={{ ...card, padding: '20px 22px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Row {selectedRow} — Health Overview</div>
+              <div style={{ fontSize: 11, color: C.t3 }}>
+                {distances.length} location{distances.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* Stacked ripeness composition bar */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 7 }}>
+                Ripeness Composition
+              </div>
+              {totalTomatoes > 0 ? (
+                <div style={{ height: 8, borderRadius: 4, overflow: 'hidden', display: 'flex', gap: 1.5 }}>
+                  <div style={{ width: `${(rowTotals.Ripe / totalTomatoes) * 100}%`, background: TOMATO_COLORS.Ripe, transition: 'width 0.4s ease', minWidth: rowTotals.Ripe > 0 ? 3 : 0 }} />
+                  <div style={{ width: `${(rowTotals.Half_Ripe / totalTomatoes) * 100}%`, background: TOMATO_COLORS.Half_Ripe, transition: 'width 0.4s ease', minWidth: rowTotals.Half_Ripe > 0 ? 3 : 0 }} />
+                  <div style={{ width: `${(rowTotals.Unripe / totalTomatoes) * 100}%`, background: TOMATO_COLORS.Unripe, transition: 'width 0.4s ease', minWidth: rowTotals.Unripe > 0 ? 3 : 0 }} />
+                </div>
+              ) : (
+                <div style={{ height: 8, borderRadius: 4, background: C.bg3 }} />
+              )}
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
                 {[
-                  { label: 'Ripe',      value: rowTotals.Ripe,      color: 'text-green-600' },
-                  { label: 'Half Ripe', value: rowTotals.Half_Ripe,  color: 'text-yellow-600' },
-                  { label: 'Unripe',    value: rowTotals.Unripe,    color: 'text-red-500' },
-                  { label: 'Flowers',   value: rowTotals.flowers,   color: 'text-blue-500' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="text-center">
-                    <p className={`text-2xl font-bold ${color}`}>{value}</p>
-                    <p className="text-sm text-gray-500 mt-0.5">{label}</p>
+                  { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      pct: totalTomatoes > 0 ? Math.round((rowTotals.Ripe / totalTomatoes) * 100) : 0 },
+                  { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, pct: totalTomatoes > 0 ? Math.round((rowTotals.Half_Ripe / totalTomatoes) * 100) : 0 },
+                  { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    pct: totalTomatoes > 0 ? Math.round((rowTotals.Unripe / totalTomatoes) * 100) : 0 },
+                ].map(({ label, color, pct }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: C.t2 }}>{label}</span>
+                    <span style={{ fontSize: 11, color: C.t3, fontWeight: 500 }} className="num">{pct}%</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Row visualizer */}
+            {/* 4 stat numbers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: C.border, borderRadius: 8, overflow: 'hidden', marginTop: 4 }}>
+              {[
+                { label: 'Ripe',      value: rowTotals.Ripe,      color: TOMATO_COLORS.Ripe },
+                { label: 'Half Ripe', value: rowTotals.Half_Ripe,  color: TOMATO_COLORS.Half_Ripe },
+                { label: 'Unripe',    value: rowTotals.Unripe,    color: TOMATO_COLORS.Unripe },
+                { label: 'Flowers',   value: rowTotals.flowers,   color: FLOWER_COLORS['0'] },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ background: C.bg2, padding: '12px 0', textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 600, color, letterSpacing: '-0.4px', lineHeight: 1 }} className="num">{value}</div>
+                  <div style={{ fontSize: 10, color: C.t3, marginTop: 5 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Row visualizer ── */}
           <RowVisualizer
             distances={distances}
             selectedIdx={selectedIdx}
-            onSelect={setSelectedIdx}
+            onSelect={(i) => { setSelectedIdx(i); setImageTab('tomatoes') }}
           />
 
-          {/* Detail panel for selected point */}
+          {/* ── Detail panel for selected point ── */}
           {selected && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Classification breakdown */}
-              <div className="space-y-4">
-                <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-                  <h3 className="text-base font-semibold text-green-700 mb-1">
-                    Position: {selected.distanceFromRowStart}m
-                  </h3>
-                  <p className="text-xs text-gray-400 mb-4">{formatTs(selected.latest_timestamp)}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
 
-                  {selected.tomato_classification ? (
-                    <>
-                      <p className="text-sm font-medium text-gray-500 mb-2">Tomatoes</p>
-                      <div className="space-y-2 mb-4">
-                        {[
-                          { label: 'Ripe',      color: '#22c55e', count: selected.tomato_classification.summary?.by_class?.Ripe      || 0 },
-                          { label: 'Half Ripe', color: '#eab308', count: selected.tomato_classification.summary?.by_class?.Half_Ripe  || 0 },
-                          { label: 'Unripe',    color: '#ef4444', count: selected.tomato_classification.summary?.by_class?.Unripe     || 0 },
-                        ].map(({ label, color, count }) => (
-                          <div key={label} className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                              <span className="text-gray-600">{label}</span>
-                            </div>
-                            <span className="font-semibold text-gray-800">{count}</span>
-                          </div>
-                        ))}
-                      </div>
+              {/* Classification sidebar */}
+              <div style={{ ...card, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                      <p className="text-sm font-medium text-gray-500 mb-2">Flowers</p>
-                      <div className="space-y-2">
-                        {[
-                          { label: 'Bud',           color: '#3b82f6', count: selected.flower_classification?.stage_counts?.['0'] || 0 },
-                          { label: 'Anthesis',       color: '#a855f7', count: selected.flower_classification?.stage_counts?.['1'] || 0 },
-                          { label: 'Post-Anthesis',  color: '#f97316', count: selected.flower_classification?.stage_counts?.['2'] || 0 },
-                        ].map(({ label, color, count }) => (
-                          <div key={label} className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                              <span className="text-gray-600">{label}</span>
-                            </div>
-                            <span className="font-semibold text-gray-800">{count}</span>
-                          </div>
-                        ))}
+                {/* Location badge */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%',
+                      background: C.greenDim, color: C.green,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 600, flexShrink: 0,
+                    }}>
+                      {selectedIdx + 1}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }} className="num">
+                        {selected.distanceFromRowStart}m
                       </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-gray-400">Not yet classified</p>
-                  )}
+                      <div style={{ fontSize: 10, color: C.t3 }}>from row start</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.t3, marginTop: 6, paddingLeft: 0 }}>{formatTs(selected.latest_timestamp)}</div>
                 </div>
+
+                {selected.tomato_classification ? (
+                  <>
+                    {/* Tomatoes */}
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                        Tomatoes
+                        <span style={{ fontSize: 11, fontWeight: 500, color: C.t1, marginLeft: 8, textTransform: 'none', letterSpacing: 0 }} className="num">
+                          {selTotalT}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {[
+                          { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      count: selTomato.Ripe      || 0 },
+                          { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, count: selTomato.Half_Ripe  || 0 },
+                          { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    count: selTomato.Unripe     || 0 },
+                        ].map(p => <BreakdownBar key={p.label} {...p} total={selTotalT} />)}
+                      </div>
+                    </div>
+
+                    {/* Flowers */}
+                    <div style={{ paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+                        Flowers
+                        <span style={{ fontSize: 11, fontWeight: 500, color: C.t1, marginLeft: 8, textTransform: 'none', letterSpacing: 0 }} className="num">
+                          {selTotalF}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {[
+                          { label: 'Bud',          color: FLOWER_COLORS['0'], count: selFlower['0'] || 0 },
+                          { label: 'Anthesis',      color: FLOWER_COLORS['1'], count: selFlower['1'] || 0 },
+                          { label: 'Post-Anthesis', color: FLOWER_COLORS['2'], count: selFlower['2'] || 0 },
+                        ].map(p => <BreakdownBar key={p.label} {...p} total={selTotalF} />)}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ fontSize: 12, color: C.t3 }}>Not yet classified</p>
+                )}
               </div>
 
-              {/* Image boxes */}
-              <div className="lg:col-span-2 space-y-4">
-                {/* Tomatoes */}
-                <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-                  <h3 className="text-base font-semibold text-green-700 mb-4">Tomatoes</h3>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
-                      <ImageGallery images={originalImages} emptyMessage="No images" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
-                      <ImageGallery images={tomatoAnnotatedImages} emptyMessage="No annotated images" />
-                    </div>
-                  </div>
+              {/* Images panel */}
+              <div style={{ ...card, overflow: 'hidden' }}>
+                {/* Tab strip */}
+                <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
+                  {[
+                    { id: 'tomatoes', label: 'Tomatoes' },
+                    { id: 'flowers',  label: 'Flowers' },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setImageTab(tab.id)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontFamily: 'inherit', padding: '11px 18px',
+                        fontSize: 13, fontWeight: imageTab === tab.id ? 500 : 400,
+                        color: imageTab === tab.id ? C.t1 : C.t2,
+                        borderBottom: imageTab === tab.id ? `2px solid ${C.green}` : '2px solid transparent',
+                        marginBottom: -1,
+                        transition: 'color 0.12s',
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Flowers */}
-                <div className="bg-white border border-green-100 rounded-xl shadow-sm p-6">
-                  <h3 className="text-base font-semibold text-green-700 mb-4">Flowers</h3>
-                  <div className="grid grid-cols-2 gap-6">
+                {/* Image content */}
+                <div style={{ padding: '18px 20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: originalImages.length > 0 ? '1fr 1fr' : '1fr', gap: 20 }}>
+                    {originalImages.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
+                        <ImageGallery images={originalImages} emptyMessage="No images" />
+                      </div>
+                    )}
                     <div>
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Original</p>
-                      <ImageGallery images={originalImages} emptyMessage="No images" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Annotated</p>
-                      <ImageGallery images={flowerAnnotatedImages} emptyMessage="No annotated images" />
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
+                      <ImageGallery
+                        images={imageTab === 'tomatoes' ? tomatoAnnotatedImages : flowerAnnotatedImages}
+                        emptyMessage="No annotated images"
+                      />
                     </div>
                   </div>
-                </div>
-
-                {/* Depth */}
-                <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-6">
-                  <h3 className="text-base font-semibold text-gray-400 mb-4">
-                    Depth <span className="text-xs font-normal text-gray-300">(coming soon)</span>
-                  </h3>
-                  <p className="text-sm text-gray-300 text-center py-4">Depth analysis not yet available</p>
                 </div>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {!loading && !error && distances.length === 0 && !error && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '64px 24px', background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10,
+        }}>
+          <div style={{ fontSize: 24, marginBottom: 12, opacity: 0.3 }}>🌱</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: C.t2, marginBottom: 6 }}>No data for Row {selectedRow}</div>
+          <div style={{ fontSize: 12, color: C.t3 }}>Upload and classify images for this row to see details here.</div>
+        </div>
       )}
     </div>
   )

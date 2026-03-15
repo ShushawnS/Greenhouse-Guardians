@@ -1,13 +1,78 @@
 import { useEffect, useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { getSummaryResults } from '../api'
 import StatCard from '../components/StatCard'
-import ChartCard from '../components/ChartCard'
+import ChartCard, { ChartTooltip } from '../components/ChartCard'
 import LoadingSpinner from '../components/LoadingSpinner'
+import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 
-const TOMATO_COLORS = { Ripe: '#22c55e', Half_Ripe: '#eab308', Unripe: '#ef4444' }
-const FLOWER_COLORS  = { '0': '#3b82f6', '1': '#a855f7', '2': '#f97316' }
-const FLOWER_LABELS  = { '0': 'Bud', '1': 'Anthesis', '2': 'Post-Anthesis' }
+/* ── Donut chart with a centre label and a right-hand legend ── */
+function DonutChart({ data, total }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+      {/* Donut */}
+      <div style={{ position: 'relative', flexShrink: 0, width: 160, height: 160 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%" cy="50%"
+              innerRadius={52} outerRadius={74}
+              paddingAngle={3}
+              dataKey="count"
+              strokeWidth={0}
+            >
+              {data.map((entry, i) => (
+                <Cell key={i} fill={entry.fill} stroke="none" />
+              ))}
+            </Pie>
+            <Tooltip content={<ChartTooltip />} wrapperStyle={{ zIndex: 100 }} />
+          </PieChart>
+        </ResponsiveContainer>
+        {/* Centre label */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          textAlign: 'center', pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.5px', lineHeight: 1 }} className="num">
+            {total.toLocaleString()}
+          </div>
+          <div style={{ fontSize: 10, color: C.t3, marginTop: 3 }}>total</div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+        {data.map(({ name, count, fill }) => {
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0
+          return (
+            <div key={name}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: fill, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: C.t2 }}>{name}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count.toLocaleString()}</span>
+                  <span style={{ fontSize: 10, color: C.t3 }} className="num">{pct}%</span>
+                </div>
+              </div>
+              {/* Progress bar */}
+              <div style={{ height: 4, background: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', width: `${pct}%`,
+                  background: fill, borderRadius: 2,
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -21,41 +86,49 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="max-w-7xl mx-auto px-6 py-8"><LoadingSpinner message="Loading greenhouse data\u2026" /></div>
+  if (loading) return (
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px' }}>
+      <LoadingSpinner message="Loading greenhouse data…" />
+    </div>
+  )
+
   if (error) return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
-      <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">
-        <p className="font-semibold">Failed to load data</p>
-        <p className="text-sm mt-1">{error}</p>
+    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px' }}>
+      <div style={{ background: C.redDim, border: `1px solid ${C.red}44`, borderRadius: 10, padding: '16px 20px' }}>
+        <p style={{ fontSize: 13, fontWeight: 500, color: C.red }}>Failed to load data</p>
+        <p style={{ fontSize: 12, color: C.t2, marginTop: 4 }}>{error}</p>
       </div>
     </div>
   )
+
   if (!data) return null
 
   const { total_tomatoes = {}, total_flowers = {}, total_tomato_count = 0, total_flower_count = 0, rows = [] } = data
   const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = total_tomatoes
   const estimatedYield = Math.round(Ripe + Half_Ripe * 0.8 + Unripe * 0.5)
 
-  const tomatoChartData = [
+  const tomatoData = [
     { name: 'Ripe',      count: Ripe,      fill: TOMATO_COLORS.Ripe },
     { name: 'Half Ripe', count: Half_Ripe, fill: TOMATO_COLORS.Half_Ripe },
     { name: 'Unripe',    count: Unripe,    fill: TOMATO_COLORS.Unripe },
   ]
-  const flowerChartData = [
+  const flowerData = [
     { name: FLOWER_LABELS['0'], count: total_flowers['0'] || 0, fill: FLOWER_COLORS['0'] },
     { name: FLOWER_LABELS['1'], count: total_flowers['1'] || 0, fill: FLOWER_COLORS['1'] },
     { name: FLOWER_LABELS['2'], count: total_flowers['2'] || 0, fill: FLOWER_COLORS['2'] },
   ]
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold text-green-800">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Overview of your greenhouse latest data from all rows</p>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Dashboard</h1>
+        <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Overview of your greenhouse — latest data from all rows</p>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      {/* KPI stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         <StatCard
           title="Total Tomatoes"
           value={total_tomato_count.toLocaleString()}
@@ -77,100 +150,106 @@ export default function Dashboard() {
         <StatCard
           title="Estimated Yield"
           value={estimatedYield.toLocaleString()}
-          subtitle="Weighted estimate in coming weeks"
+          subtitle="Weighted estimate — coming weeks"
           breakdown={[
-            { label: 'Ripe (\u00d71.0)',      count: Ripe,                        color: TOMATO_COLORS.Ripe },
-            { label: 'Half Ripe (\u00d70.8)', count: Math.round(Half_Ripe * 0.8), color: TOMATO_COLORS.Half_Ripe },
-            { label: 'Unripe (\u00d70.5)',    count: Math.round(Unripe * 0.5),    color: TOMATO_COLORS.Unripe },
+            { label: 'Ripe (×1.0)',      count: Ripe,                        color: TOMATO_COLORS.Ripe },
+            { label: 'Half Ripe (×0.8)', count: Math.round(Half_Ripe * 0.8), color: TOMATO_COLORS.Half_Ripe },
+            { label: 'Unripe (×0.5)',    count: Math.round(Unripe * 0.5),    color: TOMATO_COLORS.Unripe },
           ]}
         />
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="Tomato Ripeness Distribution">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={tomatoChartData} barSize={48} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid #d1fae5', fontSize: 12 }}
-                cursor={{ fill: '#f0fdf4' }}
-              />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {tomatoChartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Donut charts */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <ChartCard title="Tomato Ripeness" subtitle="Distribution across all rows">
+          <DonutChart data={tomatoData} total={total_tomato_count} />
         </ChartCard>
 
-        <ChartCard title="Flower Pollination Stage Distribution">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={flowerChartData} barSize={48} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ borderRadius: 8, border: '1px solid #d1fae5', fontSize: 12 }}
-                cursor={{ fill: '#f0fdf4' }}
-              />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                {flowerChartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        <ChartCard title="Flower Pollination Stages" subtitle="Distribution across all rows">
+          <DonutChart data={flowerData} total={total_flower_count} />
         </ChartCard>
       </div>
 
-      {/* Per-row summary table */}
-      <div className="bg-white border border-green-100 rounded-xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-green-50">
-          <h3 className="text-lg font-semibold text-green-700">Per-Row Breakdown</h3>
+      {/* Per-row breakdown */}
+      <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Per-Row Breakdown</div>
+          <div style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>Latest classification data per location</div>
         </div>
+
         {rows.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-gray-400 text-center">No classified data available yet.</p>
+          <div style={{ padding: '40px 22px', textAlign: 'center' }}>
+            <p style={{ fontSize: 12, color: C.t3 }}>No classified data available yet.</p>
+          </div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div>
             {rows.map(row => (
-              <details key={row.greenhouse_row} className="group">
-                <summary className="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-green-50 transition-colors list-none">
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center w-8 h-8 bg-green-100 text-green-700 rounded-full text-sm font-bold">
+              <details key={row.greenhouse_row}>
+                <summary
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 22px', cursor: 'pointer', listStyle: 'none',
+                    borderBottom: `1px solid ${C.border}`,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.bg2}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      width: 24, height: 24, borderRadius: '50%',
+                      background: C.greenDim, color: C.green,
+                      fontSize: 11, fontWeight: 600,
+                    }}>
                       {row.greenhouse_row}
                     </span>
-                    <span className="font-medium text-gray-700">Row {row.greenhouse_row}</span>
-                    <span className="text-xs text-gray-400">{row.distances.length} location{row.distances.length !== 1 ? 's' : ''}</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Row {row.greenhouse_row}</span>
+                    <span style={{ fontSize: 10, color: C.t3, background: C.bg3, borderRadius: 4, padding: '2px 7px' }}>
+                      {row.distances.length} location{row.distances.length !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <svg className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.t3} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 9l-7 7-7-7" />
                   </svg>
                 </summary>
-                <div className="px-6 pb-4">
-                  <table className="w-full text-sm">
+
+                <div style={{ padding: '12px 22px 16px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
-                      <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                        <th className="pb-2 pr-4">Distance</th>
-                        <th className="pb-2 pr-4">Timestamp</th>
-                        <th className="pb-2 pr-4">Ripe</th>
-                        <th className="pb-2 pr-4">Half Ripe</th>
-                        <th className="pb-2 pr-4">Unripe</th>
-                        <th className="pb-2">Flowers</th>
+                      <tr>
+                        {['Distance', 'Timestamp', 'Ripe', 'Half Ripe', 'Unripe', 'Flowers'].map(h => (
+                          <th key={h} style={{
+                            padding: '0 12px 8px 0', textAlign: 'left',
+                            fontSize: 10, fontWeight: 500, color: C.t3,
+                            letterSpacing: '0.05em', textTransform: 'uppercase',
+                            borderBottom: `1px solid ${C.border}`,
+                          }}>
+                            {h}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody>
                       {row.distances.map((d, i) => {
                         const bc = d.tomato_summary?.by_class || {}
                         return (
-                          <tr key={i} className="text-gray-600">
-                            <td className="py-2 pr-4 font-medium">{d.distanceFromRowStart}m</td>
-                            <td className="py-2 pr-4 text-gray-400 text-xs">{new Date(d.latest_timestamp).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                            <td className="py-2 pr-4"><span className="text-green-600 font-medium">{bc.Ripe || 0}</span></td>
-                            <td className="py-2 pr-4"><span className="text-yellow-600 font-medium">{bc.Half_Ripe || 0}</span></td>
-                            <td className="py-2 pr-4"><span className="text-red-500 font-medium">{bc.Unripe || 0}</span></td>
-                            <td className="py-2"><span className="text-blue-500 font-medium">{d.flower_summary?.total_flowers || 0}</span></td>
+                          <tr key={i} className="row-hover">
+                            <td style={{ padding: '9px 12px 9px 0', color: C.t1, fontWeight: 500, borderBottom: `1px solid ${C.border}` }} className="num">{d.distanceFromRowStart}m</td>
+                            <td style={{ padding: '9px 12px 9px 0', color: C.t3, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>
+                              {new Date(d.latest_timestamp).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
+                              <span style={{ color: TOMATO_COLORS.Ripe, fontWeight: 500 }} className="num">{bc.Ripe || 0}</span>
+                            </td>
+                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
+                              <span style={{ color: TOMATO_COLORS.Half_Ripe, fontWeight: 500 }} className="num">{bc.Half_Ripe || 0}</span>
+                            </td>
+                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
+                              <span style={{ color: TOMATO_COLORS.Unripe, fontWeight: 500 }} className="num">{bc.Unripe || 0}</span>
+                            </td>
+                            <td style={{ padding: '9px 0', borderBottom: `1px solid ${C.border}` }}>
+                              <span style={{ color: FLOWER_COLORS['0'], fontWeight: 500 }} className="num">{d.flower_summary?.total_flowers || 0}</span>
+                            </td>
                           </tr>
                         )
                       })}
