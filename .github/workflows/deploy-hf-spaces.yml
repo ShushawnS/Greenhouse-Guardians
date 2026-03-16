@@ -1,0 +1,60 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "deploy/hf-spaces/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Install Git LFS
+        run: git lfs install
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git clone https://KayenM:${HF_TOKEN}@huggingface.co/spaces/KayenM/GreenhouseGuardians /tmp/hf-space
+
+          # Clear old content (preserve .git)
+          cd /tmp/hf-space
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+
+          # Copy deployment files to root
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/README.md"        .
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/Dockerfile"       .
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/nginx.conf"       .
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/supervisord.conf" .
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/requirements.txt" .
+          cp "$GITHUB_WORKSPACE/deploy/hf-spaces/.gitattributes"   .
+
+          # Copy server source (exclude secrets, models, caches)
+          cp -R "$GITHUB_WORKSPACE/server" ./server
+          rm -rf ./server/.env \
+                 ./server/.env.example \
+                 ./server/models/*.pt \
+                 ./server/models/.cache \
+                 ./server/*/__pycache__
+
+          # Configure git and push
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy."
+          else
+            git -c user.name="GitHub Actions" \
+                -c user.email="actions@github.com" \
+                commit -m "Deploy from ${GITHUB_SHA::7}"
+            git push
+            echo "Deployed successfully."
+          fi

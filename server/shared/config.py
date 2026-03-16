@@ -48,8 +48,11 @@ def make_ts_key(timestamp: str) -> str:
     return timestamp.replace(".", "_")
 
 
-# CORS origins
+# CORS origins — extend via EXTRA_CORS_ORIGINS env var (comma-separated)
 CORS_ORIGINS = [
     "http://localhost:5173",
     "*",
 ]
+_extra = os.getenv("EXTRA_CORS_ORIGINS", "")
+if _extra:
+    CORS_ORIGINS.extend(origin.strip() for origin in _extra.split(",") if origin.strip())

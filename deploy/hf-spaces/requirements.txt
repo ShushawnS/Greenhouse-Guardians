@@ -1,0 +1,13 @@
+fastapi
+python-dotenv
+uvicorn[standard]
+motor
+pymongo
+python-multipart
+httpx
+ultralytics
+huggingface_hub
+opencv-python-headless
+Pillow
+numpy
+supervisor

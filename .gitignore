@@ -26,3 +26,8 @@ server/.env          # real secrets go here; use server/.env.example as template
 # OS
 .DS_Store
 Thumbs.db
+
+# images
+*.png
+*.jpg
+*.jpeg

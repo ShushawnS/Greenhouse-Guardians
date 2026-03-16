@@ -1,9 +1,13 @@
 import axios from 'axios'
 
-// Each service has its own axios instance routed through Vite proxy
-export const uploadApi = axios.create({ baseURL: '/api/upload' })
-export const classifyApi = axios.create({ baseURL: '/api/classify' })
-export const resultsApi = axios.create({ baseURL: '/api/results' })
+// When VITE_API_BASE_URL is set (e.g. "https://your-space.hf.space"), requests
+// go directly to the HF Spaces nginx proxy.  In local dev, the Vite dev server
+// proxy handles routing, so the base is just the relative path prefix.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+export const uploadApi = axios.create({ baseURL: `${API_BASE}/api/upload` })
+export const classifyApi = axios.create({ baseURL: `${API_BASE}/api/classify` })
+export const resultsApi = axios.create({ baseURL: `${API_BASE}/api/results` })
 
 // Upload Service
 export const uploadData = (formData) => uploadApi.post('/uploadData', formData)
@@ -13,6 +17,6 @@ export const demoClassify = (formData) => uploadApi.post('/demoClassify', formDa
 // Results Service
 export const getSummaryResults = () => resultsApi.get('/getSummaryResults')
 export const getDetailedRowData = (row) => resultsApi.get('/getDetailedRowData', { params: { row } })
-export const getImageUrl = (fileId) => `http://localhost:8003/getImage/${fileId}`
+export const getImageUrl = (fileId) => `${API_BASE}/api/results/getImage/${fileId}`
 export const getTrends = () => resultsApi.get('/getTrends')
 export const getAllData = () => resultsApi.get('/getAllData')
