@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getDetailedRowData } from '../api'
+import { getDetailedRowData, API_BASE } from '../api'
 import RowVisualizer from '../components/RowVisualizer'
 import ImageGallery from '../components/ImageGallery'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -32,7 +32,7 @@ function toFlowerDetections(classification) {
 
 function toImgList(urls, labelPrefix, detections = []) {
   return (urls || []).map((url, i) => ({
-    src: url.startsWith('http') ? url : `http://localhost:8003${url}`,
+    src: url.startsWith('http') ? url : `${API_BASE}/api/results${url}`,
     label: `${labelPrefix} ${i + 1}`,
     detections,
   }))

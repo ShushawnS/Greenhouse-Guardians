@@ -3,7 +3,7 @@ import axios from 'axios'
 // When VITE_API_BASE_URL is set (e.g. "https://your-space.hf.space"), requests
 // go directly to the HF Spaces nginx proxy.  In local dev, the Vite dev server
 // proxy handles routing, so the base is just the relative path prefix.
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 export const uploadApi = axios.create({ baseURL: `${API_BASE}/api/upload` })
 export const classifyApi = axios.create({ baseURL: `${API_BASE}/api/classify` })

@@ -1,9 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
-import { getAllData } from '../api/index.js'
+import { getAllData, API_BASE } from '../api/index.js'
 import { C } from '../tokens'
 
-const RESULT_BASE = 'http://localhost:8003'
-function imgSrc(path) { return `${RESULT_BASE}${path}` }
+function imgSrc(path) { return `${API_BASE}/api/results${path}` }
 
 /* ── tiny badge ──────────────────────────────────────────────── */
 function Badge({ label, value, color, dimColor }) {
