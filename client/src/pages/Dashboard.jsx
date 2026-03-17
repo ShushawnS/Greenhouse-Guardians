@@ -5,6 +5,7 @@ import StatCard from '../components/StatCard'
 import ChartCard, { ChartTooltip } from '../components/ChartCard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
+import GreenhouseHeatmap from '../components/GreenhouseHeatmap'
 
 /* ── Donut chart with a centre label and a right-hand legend ── */
 function DonutChart({ data, total }) {
@@ -151,99 +152,8 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Per-row breakdown */}
-      <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 22px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Per-Row Breakdown</div>
-          <div style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>Latest classification data per location</div>
-        </div>
-
-        {rows.length === 0 ? (
-          <div style={{ padding: '40px 22px', textAlign: 'center' }}>
-            <p style={{ fontSize: 12, color: C.t3 }}>No classified data available yet.</p>
-          </div>
-        ) : (
-          <div>
-            {rows.map(row => (
-              <details key={row.greenhouse_row}>
-                <summary
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 22px', cursor: 'pointer', listStyle: 'none',
-                    borderBottom: `1px solid ${C.border}`,
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = C.bg2}
-                  onMouseLeave={e => e.currentTarget.style.background = ''}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 24, height: 24, borderRadius: '50%',
-                      background: C.greenDim, color: C.green,
-                      fontSize: 11, fontWeight: 600,
-                    }}>
-                      {row.greenhouse_row}
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Row {row.greenhouse_row}</span>
-                    <span style={{ fontSize: 10, color: C.t3, background: C.bg3, borderRadius: 4, padding: '2px 7px' }}>
-                      {row.distances.length} location{row.distances.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={C.t3} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 9l-7 7-7-7" />
-                  </svg>
-                </summary>
-
-                <div style={{ padding: '12px 22px 16px' }}>
-                  <div className="tbl-scroll">
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 480 }}>
-                    <thead>
-                      <tr>
-                        {['Distance', 'Timestamp', 'Ripe', 'Half Ripe', 'Unripe', 'Flowers'].map(h => (
-                          <th key={h} style={{
-                            padding: '0 12px 8px 0', textAlign: 'left',
-                            fontSize: 10, fontWeight: 500, color: C.t3,
-                            letterSpacing: '0.05em', textTransform: 'uppercase',
-                            borderBottom: `1px solid ${C.border}`,
-                          }}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {row.distances.map((d, i) => {
-                        const bc = d.tomato_summary?.by_class || {}
-                        return (
-                          <tr key={i} className="row-hover">
-                            <td style={{ padding: '9px 12px 9px 0', color: C.t1, fontWeight: 500, borderBottom: `1px solid ${C.border}` }} className="num">{d.distanceFromRowStart}m</td>
-                            <td style={{ padding: '9px 12px 9px 0', color: C.t3, fontSize: 11, borderBottom: `1px solid ${C.border}` }}>
-                              {new Date(d.latest_timestamp).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                            </td>
-                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
-                              <span style={{ color: TOMATO_COLORS.Ripe, fontWeight: 500 }} className="num">{bc.Ripe || 0}</span>
-                            </td>
-                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
-                              <span style={{ color: TOMATO_COLORS.Half_Ripe, fontWeight: 500 }} className="num">{bc.Half_Ripe || 0}</span>
-                            </td>
-                            <td style={{ padding: '9px 12px 9px 0', borderBottom: `1px solid ${C.border}` }}>
-                              <span style={{ color: TOMATO_COLORS.Unripe, fontWeight: 500 }} className="num">{bc.Unripe || 0}</span>
-                            </td>
-                            <td style={{ padding: '9px 0', borderBottom: `1px solid ${C.border}` }}>
-                              <span style={{ color: FLOWER_COLORS['0'], fontWeight: 500 }} className="num">{d.flower_summary?.total_flowers || 0}</span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                  </div>
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Greenhouse heatmap */}
+      <GreenhouseHeatmap rows={rows} />
     </div>
   )
 }
