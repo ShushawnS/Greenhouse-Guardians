@@ -138,7 +138,7 @@ export default function ClassifyUpload() {
   }
 
   return (
-    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Page header */}
       <div>
@@ -179,7 +179,7 @@ export default function ClassifyUpload() {
             <div style={{ fontSize: 12, fontWeight: 500, color: C.t2, marginBottom: 14, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
               Location &amp; Time
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <div className="rg-3" style={{ gap: 12 }}>
               <Field label="Greenhouse Row">
                 <input type="number" min="1" value={row} onChange={e => setRow(e.target.value)}
                   placeholder="e.g. 1" style={inputStyle} />
@@ -305,7 +305,7 @@ export default function ClassifyUpload() {
 
           {/* Summary cards */}
           {tomatoSummary && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="rg-2" style={{ gap: 12 }}>
               {/* Tomato summary */}
               <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
                 <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Tomato Summary</div>
@@ -361,7 +361,7 @@ export default function ClassifyUpload() {
           ].map(({ title, annotated }) => (
             <div key={title} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
               <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: originalImages.length > 0 ? '1fr 1fr' : '1fr', gap: 20 }}>
+              <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
                 {originalImages.length > 0 && (
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>

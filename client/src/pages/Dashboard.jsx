@@ -119,7 +119,7 @@ export default function Dashboard() {
   ]
 
   return (
-    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Page header */}
       <div>
@@ -128,7 +128,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+      <div className="rg-3" style={{ gap: 12 }}>
         <StatCard
           title="Total Tomatoes"
           value={total_tomato_count.toLocaleString()}
@@ -160,7 +160,7 @@ export default function Dashboard() {
       </div>
 
       {/* Donut charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="rg-2" style={{ gap: 12 }}>
         <ChartCard title="Tomato Ripeness" subtitle="Distribution across all rows">
           <DonutChart data={tomatoData} total={total_tomato_count} />
         </ChartCard>
@@ -214,7 +214,8 @@ export default function Dashboard() {
                 </summary>
 
                 <div style={{ padding: '12px 22px 16px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <div className="tbl-scroll">
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 480 }}>
                     <thead>
                       <tr>
                         {['Distance', 'Timestamp', 'Ripe', 'Half Ripe', 'Unripe', 'Flowers'].map(h => (
@@ -255,6 +256,7 @@ export default function Dashboard() {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </details>
             ))}

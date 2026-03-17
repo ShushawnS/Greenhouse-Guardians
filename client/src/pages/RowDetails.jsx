@@ -146,7 +146,7 @@ export default function RowDetails() {
   const card = { background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10 }
 
   return (
-    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
@@ -210,7 +210,7 @@ export default function RowDetails() {
             </div>
 
             {/* 4 stat numbers */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: C.border, borderRadius: 8, overflow: 'hidden', marginTop: 4 }}>
+            <div className="rg-4" style={{ gap: 1, background: C.border, borderRadius: 8, overflow: 'hidden', marginTop: 4 }}>
               {[
                 { label: 'Ripe',      value: rowTotals.Ripe,      color: TOMATO_COLORS.Ripe },
                 { label: 'Half Ripe', value: rowTotals.Half_Ripe,  color: TOMATO_COLORS.Half_Ripe },
@@ -234,7 +234,7 @@ export default function RowDetails() {
 
           {/* ── Detail panel for selected point ── */}
           {selected && (
-            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
+            <div className="rg-sidebar" style={{ gap: 12 }}>
 
               {/* Classification sidebar */}
               <div style={{ ...card, padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -329,7 +329,7 @@ export default function RowDetails() {
 
                 {/* Image content */}
                 <div style={{ padding: '18px 20px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: originalImages.length > 0 ? '1fr 1fr' : '1fr', gap: 20 }}>
+                  <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
                     {originalImages.length > 0 && (
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>

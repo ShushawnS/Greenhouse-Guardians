@@ -303,7 +303,7 @@ export default function AyushTesting() {
   }
 
   return (
-    <div className="page-in" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
@@ -323,7 +323,7 @@ export default function AyushTesting() {
 
       {/* Summary chips */}
       {stats && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <div className="rg-4" style={{ gap: 10 }}>
           <SummaryChip label="Locations"  value={stats.locations} />
           <SummaryChip label="Total Runs" value={stats.runs} />
           <SummaryChip label="Tomatoes Detected" value={stats.tomatoes} color={C.ripe} />
