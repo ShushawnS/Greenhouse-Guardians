@@ -19,12 +19,12 @@ MODELS_DIR = os.getenv(
     "MODELS_DIR",
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "models"),
 )
-TOMATO_MODEL_PATH = os.path.join(MODELS_DIR, "ripeness_best.pt")
+TOMATO_MODEL_PATH = os.path.join(MODELS_DIR, "ripeness_finetuned_new.pt")
 FLOWER_MODEL_PATH = os.path.join(MODELS_DIR, "best.pt")
 
 # Hugging Face model repos
 TOMATO_HF_REPO = "deenp03/tomato-ripeness-classifier"
-TOMATO_HF_FILENAME = "ripeness_best.pt"
+TOMATO_HF_FILENAME = "ripeness_finetuned_new.pt"
 FLOWER_HF_REPO = "deenp03/tomato_pollination_stage_classifier"
 FLOWER_HF_FILENAME = "best.pt"
 
