@@ -94,6 +94,7 @@ class ClassifyNowRequest(BaseModel):
     greenhouse_row: int
     distanceFromRowStart: float
     timestamp: str
+    confidence_threshold: float = 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -142,14 +143,15 @@ async def _classify_and_save(
     distance: float,
     timestamp: str,
     image_bytes_list: list[bytes],
+    conf_threshold: float = 0.25,
 ) -> dict:
     """
     Run both classifiers in parallel, persist annotated images to GridFS,
     and update the row_data document.  Returns the classification dicts.
     """
     tomato_result, flower_result = await asyncio.gather(
-        classifier.classify_tomatoes(image_bytes_list),
-        classifier.classify_flowers(image_bytes_list),
+        classifier.classify_tomatoes(image_bytes_list, conf_threshold),
+        classifier.classify_flowers(image_bytes_list, conf_threshold),
     )
 
     tomato_ids, flower_ids = await asyncio.gather(
@@ -228,6 +230,7 @@ async def classify_now(req: ClassifyNowRequest):
         distance=req.distanceFromRowStart,
         timestamp=req.timestamp,
         image_bytes_list=image_bytes_list,
+        conf_threshold=req.confidence_threshold,
     )
 
     logger.info("classifyNow complete: doc=%s ts=%s", req.document_id, req.timestamp)
@@ -235,7 +238,10 @@ async def classify_now(req: ClassifyNowRequest):
 
 
 @app.post("/classifyDirect")
-async def classify_direct(images: list[UploadFile] = File(...)):
+async def classify_direct(
+    images: list[UploadFile] = File(...),
+    confidence_threshold: float = Form(0.25),
+):
     """
     Classify uploaded images without touching MongoDB.
     Returns base64-encoded annotated images and classification summaries.
@@ -246,8 +252,8 @@ async def classify_direct(images: list[UploadFile] = File(...)):
     image_bytes_list = [await img.read() for img in images]
 
     tomato_result, flower_result = await asyncio.gather(
-        classifier.classify_tomatoes(image_bytes_list),
-        classifier.classify_flowers(image_bytes_list),
+        classifier.classify_tomatoes(image_bytes_list, confidence_threshold),
+        classifier.classify_flowers(image_bytes_list, confidence_threshold),
     )
 
     tomato_b64 = [

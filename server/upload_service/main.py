@@ -224,6 +224,7 @@ async def upload_classify(
     timestamp: str = Form(...),
     greenhouse_row: int = Form(...),
     distanceFromRowStart: float = Form(...),
+    confidence_threshold: float = Form(0.25),
     images: list[UploadFile] = File(...),
 ):
     """
@@ -255,6 +256,7 @@ async def upload_classify(
         "greenhouse_row":       greenhouse_row,
         "distanceFromRowStart": distanceFromRowStart,
         "timestamp":            timestamp,
+        "confidence_threshold": confidence_threshold,
     }
     try:
         async with httpx.AsyncClient(timeout=180) as client:
@@ -302,7 +304,10 @@ async def upload_classify(
 # ---------------------------------------------------------------------------
 
 @app.post("/demoClassify")
-async def demo_classify(images: list[UploadFile] = File(...)):
+async def demo_classify(
+    confidence_threshold: float = Form(0.25),
+    images: list[UploadFile] = File(...),
+):
     """
     Forward images directly to the Classify Service (/classifyDirect).
     Nothing is stored in MongoDB or GridFS.
@@ -328,6 +333,7 @@ async def demo_classify(images: list[UploadFile] = File(...)):
             resp = await client.post(
                 f"{CLASSIFY_SERVICE_URL}/classifyDirect",
                 files=multipart_files,
+                data={"confidence_threshold": str(confidence_threshold)},
             )
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:

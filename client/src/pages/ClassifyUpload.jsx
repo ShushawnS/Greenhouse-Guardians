@@ -3,6 +3,7 @@ import { demoClassify, uploadClassify, getImageUrl } from '../api'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ImageGallery from '../components/ImageGallery'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
+import { useSettings } from '../context/SettingsContext'
 
 const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
@@ -49,6 +50,7 @@ const inputStyle = {
 }
 
 export default function ClassifyUpload() {
+  const { settings } = useSettings()
   const [files, setFiles] = useState([])
   const [dragging, setDragging] = useState(false)
   const [demoMode, setDemoMode] = useState(false)
@@ -86,6 +88,7 @@ export default function ClassifyUpload() {
     try {
       const fd = new FormData()
       files.forEach(f => fd.append('images', f))
+      fd.append('confidence_threshold', settings.confidenceThreshold)
 
       let res
       if (demoMode) {

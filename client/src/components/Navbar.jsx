@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { C } from '../tokens'
 
+const GearIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+)
+
 const LeafIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill={C.green} style={{ flexShrink: 0 }}>
     <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 0 0 8 20C19 20 22 3 22 3c-1 2-8 2-8 2 2-4 8-3 8-3-3.37-3.37-9-3-11 1z"/>
@@ -63,6 +70,24 @@ export default function Navbar() {
             </NavLink>
           ))}
         </div>
+
+        {/* Gear icon — settings */}
+        <NavLink
+          to="/settings"
+          style={({ isActive }) => ({
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32, borderRadius: 7, marginLeft: 4,
+            color: isActive ? C.green : C.t3,
+            background: isActive ? C.greenDim : 'transparent',
+            border: `1px solid ${isActive ? C.green + '44' : 'transparent'}`,
+            textDecoration: 'none',
+            transition: 'all 0.14s',
+            flexShrink: 0,
+          })}
+          title="Settings"
+        >
+          <GearIcon />
+        </NavLink>
 
         {/* Hamburger — mobile only */}
         <button

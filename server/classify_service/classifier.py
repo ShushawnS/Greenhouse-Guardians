@@ -146,7 +146,7 @@ def _draw_box(
 # Sync inference implementations (run in thread-pool executor)
 # ---------------------------------------------------------------------------
 
-def _run_tomato_inference(image_bytes_list: list[bytes]) -> dict:
+def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float = 0.25) -> dict:
     if tomato_model is None:
         raise RuntimeError("Tomato model not loaded — call load_models() first.")
 
@@ -156,7 +156,7 @@ def _run_tomato_inference(image_bytes_list: list[bytes]) -> dict:
 
     for img_bytes in image_bytes_list:
         img = _decode_image(img_bytes)
-        results = tomato_model(img, verbose=False)
+        results = tomato_model(img, verbose=False, conf=conf_threshold)
 
         for result in results:
             if result.boxes is None:
@@ -190,7 +190,7 @@ def _run_tomato_inference(image_bytes_list: list[bytes]) -> dict:
     }
 
 
-def _run_flower_inference(image_bytes_list: list[bytes]) -> dict:
+def _run_flower_inference(image_bytes_list: list[bytes], conf_threshold: float = 0.25) -> dict:
     if flower_model is None:
         raise RuntimeError("Flower model not loaded — call load_models() first.")
 
@@ -200,7 +200,7 @@ def _run_flower_inference(image_bytes_list: list[bytes]) -> dict:
 
     for img_bytes in image_bytes_list:
         img = _decode_image(img_bytes)
-        results = flower_model(img, verbose=False)
+        results = flower_model(img, verbose=False, conf=conf_threshold)
 
         for result in results:
             if result.boxes is None:
@@ -236,7 +236,7 @@ def _run_flower_inference(image_bytes_list: list[bytes]) -> dict:
 # Public async API
 # ---------------------------------------------------------------------------
 
-async def classify_tomatoes(image_bytes_list: list[bytes]) -> dict:
+async def classify_tomatoes(image_bytes_list: list[bytes], conf_threshold: float = 0.25) -> dict:
     """
     Run tomato ripeness detection on a list of images.
 
@@ -253,10 +253,10 @@ async def classify_tomatoes(image_bytes_list: list[bytes]) -> dict:
             "annotated_image_bytes": [bytes, ...],   # one per input image
         }
     """
-    return await asyncio.to_thread(_run_tomato_inference, image_bytes_list)
+    return await asyncio.to_thread(_run_tomato_inference, image_bytes_list, conf_threshold)
 
 
-async def classify_flowers(image_bytes_list: list[bytes]) -> dict:
+async def classify_flowers(image_bytes_list: list[bytes], conf_threshold: float = 0.25) -> dict:
     """
     Run flower pollination stage detection on a list of images.
 
@@ -274,7 +274,7 @@ async def classify_flowers(image_bytes_list: list[bytes]) -> dict:
             "annotated_image_bytes": [bytes, ...],
         }
     """
-    return await asyncio.to_thread(_run_flower_inference, image_bytes_list)
+    return await asyncio.to_thread(_run_flower_inference, image_bytes_list, conf_threshold)
 
 
 async def classify_depth(

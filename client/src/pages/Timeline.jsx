@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { getAllData, API_BASE } from '../api/index.js'
 import { C } from '../tokens'
 import ImageModal from '../components/ImageModal'
+import { useSettings } from '../context/SettingsContext'
 
 const POLL_MS          = 20_000
 const NEW_HIGHLIGHT_MS = 5_000
@@ -411,6 +412,7 @@ function TimelineEntry({ entry, isNew }) {
 
 /* ── main page ── */
 export default function Timeline() {
+  const { settings } = useSettings()
   const [entries, setEntries] = useState([])
   const [pending, setPending] = useState([])
   const [newIds,  setNewIds]  = useState(new Set())
@@ -445,9 +447,10 @@ export default function Timeline() {
   useEffect(() => { fetchAll({ initial: true }) }, [fetchAll])
 
   useEffect(() => {
+    if (!settings.autoRefresh) return
     const t = setInterval(() => fetchAll({ initial: false }), POLL_MS)
     return () => clearInterval(t)
-  }, [fetchAll])
+  }, [fetchAll, settings.autoRefresh])
 
   function showPending() {
     const ids = new Set(pending.map(e => e.id))
@@ -475,7 +478,10 @@ export default function Timeline() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px', margin: 0 }}>Timeline</h1>
-          <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>All classification events · most recent first · auto-refreshes every 20s</p>
+          <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>
+            All classification events · most recent first
+            {settings.autoRefresh ? ' · auto-refreshes every 20s' : ' · auto-refresh off'}
+          </p>
         </div>
         <button
           onClick={() => fetchAll({ initial: true })}
