@@ -105,7 +105,8 @@ export default function Dashboard() {
 
   const { total_tomatoes = {}, total_flowers = {}, total_tomato_count = 0, total_flower_count = 0, rows = [] } = data
   const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = total_tomatoes
-  const estimatedYield = Math.round(Ripe + Half_Ripe * 0.8 + Unripe * 0.5)
+  const AVG_TOMATO_KG = 0.15
+  const estimatedYieldKg = ((Ripe + Half_Ripe * 0.8 + Unripe * 0.5) * AVG_TOMATO_KG).toFixed(1)
 
   const tomatoData = [
     { name: 'Ripe',      count: Ripe,      fill: TOMATO_COLORS.Ripe },
@@ -127,47 +128,27 @@ export default function Dashboard() {
         <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Overview of your greenhouse — latest data from all rows</p>
       </div>
 
-      {/* KPI stat cards */}
+      {/* Combined chart + stat cards */}
       <div className="rg-3" style={{ gap: 12 }}>
-        <StatCard
-          title="Total Tomatoes"
-          value={total_tomato_count.toLocaleString()}
-          breakdown={[
-            { label: 'Ripe',      count: Ripe,      color: TOMATO_COLORS.Ripe },
-            { label: 'Half Ripe', count: Half_Ripe, color: TOMATO_COLORS.Half_Ripe },
-            { label: 'Unripe',    count: Unripe,    color: TOMATO_COLORS.Unripe },
-          ]}
-        />
-        <StatCard
-          title="Total Flowers"
-          value={total_flower_count.toLocaleString()}
-          breakdown={[
-            { label: FLOWER_LABELS['0'], count: total_flowers['0'] || 0, color: FLOWER_COLORS['0'] },
-            { label: FLOWER_LABELS['1'], count: total_flowers['1'] || 0, color: FLOWER_COLORS['1'] },
-            { label: FLOWER_LABELS['2'], count: total_flowers['2'] || 0, color: FLOWER_COLORS['2'] },
-          ]}
-        />
-        <StatCard
-          title="Estimated Yield"
-          value={estimatedYield.toLocaleString()}
-          subtitle="Weighted estimate — coming weeks"
-          breakdown={[
-            { label: 'Ripe (×1.0)',      count: Ripe,                        color: TOMATO_COLORS.Ripe },
-            { label: 'Half Ripe (×0.8)', count: Math.round(Half_Ripe * 0.8), color: TOMATO_COLORS.Half_Ripe },
-            { label: 'Unripe (×0.5)',    count: Math.round(Unripe * 0.5),    color: TOMATO_COLORS.Unripe },
-          ]}
-        />
-      </div>
-
-      {/* Donut charts */}
-      <div className="rg-2" style={{ gap: 12 }}>
-        <ChartCard title="Tomato Ripeness" subtitle="Distribution across all rows">
+        <ChartCard title="Tomato Ripeness" subtitle="Distribution across all rows" value={total_tomato_count.toLocaleString()}>
           <DonutChart data={tomatoData} total={total_tomato_count} />
         </ChartCard>
 
-        <ChartCard title="Flower Pollination Stages" subtitle="Distribution across all rows">
+        <ChartCard title="Flower Pollination Stages" subtitle="Distribution across all rows" value={total_flower_count.toLocaleString()}>
           <DonutChart data={flowerData} total={total_flower_count} />
         </ChartCard>
+
+        <StatCard
+          title="Estimated Yield"
+          icon="🍅"
+          value={`${estimatedYieldKg} kg`}
+          subtitle="Weighted estimate · ~150g per tomato"
+          breakdown={[
+            { label: 'Ripe (×1.0)',      count: Math.round(Ripe * AVG_TOMATO_KG * 10) / 10,      color: TOMATO_COLORS.Ripe },
+            { label: 'Half Ripe (×0.8)', count: Math.round(Half_Ripe * 0.8 * AVG_TOMATO_KG * 10) / 10, color: TOMATO_COLORS.Half_Ripe },
+            { label: 'Unripe (×0.5)',    count: Math.round(Unripe * 0.5 * AVG_TOMATO_KG * 10) / 10,    color: TOMATO_COLORS.Unripe },
+          ]}
+        />
       </div>
 
       {/* Per-row breakdown */}

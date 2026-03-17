@@ -28,7 +28,7 @@ export function ChartTooltip({ active, payload, label }) {
   )
 }
 
-export default function ChartCard({ title, subtitle, children }) {
+export default function ChartCard({ title, subtitle, value, children }) {
   return (
     <div style={{
       background: C.bg1,
@@ -36,10 +36,17 @@ export default function ChartCard({ title, subtitle, children }) {
       borderRadius: 10,
       padding: '20px 22px',
     }}>
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>{title}</div>
-        {subtitle && (
-          <div style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>{subtitle}</div>
+      <div style={{ marginBottom: 18, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>{title}</div>
+          {subtitle && (
+            <div style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>{subtitle}</div>
+          )}
+        </div>
+        {value !== undefined && (
+          <div style={{ fontSize: 26, fontWeight: 600, color: C.t1, letterSpacing: '-0.5px', lineHeight: 1 }} className="num">
+            {value}
+          </div>
         )}
       </div>
       {children}
