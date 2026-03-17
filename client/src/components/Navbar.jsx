@@ -30,12 +30,12 @@ export default function Navbar() {
         height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}>
           <LeafIcon />
           <span style={{ fontSize: 13, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>
             GreenhouseGuardians
           </span>
-        </div>
+        </NavLink>
 
         {/* Desktop nav links */}
         <div className="nav-links-wrap" style={{ alignItems: 'center', height: '100%' }}>
