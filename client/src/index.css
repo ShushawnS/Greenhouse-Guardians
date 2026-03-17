@@ -48,6 +48,15 @@ body {
   border-radius: 4px;
 }
 
+/* ── Image section reveal ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.img-reveal {
+  animation: fadeUp 0.22s ease-out both;
+}
+
 /* ── Spinner ── */
 @keyframes spin {
   from { transform: rotate(0deg); }
