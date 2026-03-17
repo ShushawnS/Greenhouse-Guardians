@@ -20,3 +20,5 @@ export const getDetailedRowData = (row) => resultsApi.get('/getDetailedRowData',
 export const getImageUrl = (fileId) => `${API_BASE}/api/results/getImage/${fileId}`
 export const getTrends = () => resultsApi.get('/getTrends')
 export const getAllData = () => resultsApi.get('/getAllData')
+export const deleteData = (row) =>
+  resultsApi.delete('/deleteData', { params: row != null ? { row } : {} })

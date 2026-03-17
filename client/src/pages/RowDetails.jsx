@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { getDetailedRowData, API_BASE } from '../api'
+import { getDetailedRowData, deleteData, API_BASE } from '../api'
 import RowVisualizer from '../components/RowVisualizer'
 import ImageGallery from '../components/ImageGallery'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 
-const ROW_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1)
+const ROW_OPTIONS = Array.from({ length: 5 }, (_, i) => i + 1)
 const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
 function formatTs(ts) {
@@ -36,6 +36,99 @@ function toImgList(urls, labelPrefix, detections = []) {
     label: `${labelPrefix} ${i + 1}`,
     detections,
   }))
+}
+
+/* ── Delete confirm modal ── */
+function DeleteModal({ mode, rowNum, onConfirm, onCancel, loading }) {
+  const [input, setInput] = useState('')
+  const isAllRows = mode === 'all'
+  const label = isAllRows ? 'all rows' : `Row ${rowNum}`
+  const ready = input.trim().toLowerCase() === 'confirm'
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: C.bg1,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: '28px 28px 24px',
+        width: 380, maxWidth: '90vw',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        {/* Icon + title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: '#fef2f2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18, flexShrink: 0,
+          }}>
+            🗑️
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.t1 }}>
+            Delete {isAllRows ? 'All Data' : `Row ${rowNum} Data`}
+          </div>
+        </div>
+
+        <p style={{ fontSize: 13, color: C.t2, marginBottom: 18, lineHeight: 1.6 }}>
+          This will permanently delete all documents and images for{' '}
+          <strong style={{ color: C.t1 }}>{label}</strong>.
+          This action cannot be undone.
+        </p>
+
+        <label style={{ display: 'block', fontSize: 12, color: C.t2, marginBottom: 6 }}>
+          Type <strong style={{ color: C.t1 }}>confirm</strong> to continue
+        </label>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && ready && !loading && onConfirm()}
+          placeholder="confirm"
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            padding: '9px 12px', borderRadius: 7,
+            border: `1px solid ${input && !ready ? '#fca5a5' : C.border}`,
+            fontSize: 13, fontFamily: 'inherit', color: C.t1,
+            background: C.bg2, outline: 'none',
+            marginBottom: 20,
+          }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              padding: '8px 18px', borderRadius: 7, fontSize: 13,
+              border: `1px solid ${C.border}`, background: C.bg2,
+              color: C.t2, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={!ready || loading}
+            style={{
+              padding: '8px 18px', borderRadius: 7, fontSize: 13,
+              border: 'none', fontFamily: 'inherit',
+              background: ready && !loading ? '#ef4444' : '#fca5a5',
+              color: '#fff',
+              cursor: ready && !loading ? 'pointer' : 'not-allowed',
+              transition: 'background 0.12s',
+            }}
+          >
+            {loading ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /* ── Thin horizontal progress bar with label ── */
@@ -103,6 +196,35 @@ export default function RowDetails() {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [imageTab, setImageTab] = useState('tomatoes') // 'tomatoes' | 'flowers'
 
+  // Delete modal state: null | 'row' | 'all'
+  const [deleteMode, setDeleteMode] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteResult, setDeleteResult] = useState(null)
+
+  async function handleDelete() {
+    setDeleteLoading(true)
+    try {
+      const row = deleteMode === 'row' ? selectedRow : undefined
+      const res = await deleteData(row)
+      setDeleteResult(res.data)
+      setDeleteMode(null)
+      // Reload row data after deletion
+      setData(null); setSelectedIdx(0); setError(null); setLoading(true)
+      getDetailedRowData(selectedRow)
+        .then(r => setData(r.data))
+        .catch(err => {
+          if (err.response?.status === 404) setError(`No data found for Row ${selectedRow}.`)
+          else setError(err.response?.data?.detail || err.message)
+        })
+        .finally(() => setLoading(false))
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message)
+      setDeleteMode(null)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
   useEffect(() => {
     setData(null); setSelectedIdx(0); setError(null); setLoading(true)
     setImageTab('tomatoes')
@@ -148,14 +270,68 @@ export default function RowDetails() {
   return (
     <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+      {/* Delete confirm modal */}
+      {deleteMode && (
+        <DeleteModal
+          mode={deleteMode}
+          rowNum={selectedRow}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteMode(null)}
+          loading={deleteLoading}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Row Details</h1>
           <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Inspect classification results at each position along a row</p>
         </div>
-        <RowSelector value={selectedRow} onChange={setSelectedRow} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <RowSelector value={selectedRow} onChange={setSelectedRow} />
+          {/* Delete buttons */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => { setDeleteResult(null); setDeleteMode('row') }}
+              style={{
+                padding: '7px 14px', borderRadius: 7, fontSize: 12,
+                border: '1px solid #fca5a5', background: '#fef2f2',
+                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Delete Row {selectedRow}
+            </button>
+            <button
+              onClick={() => { setDeleteResult(null); setDeleteMode('all') }}
+              style={{
+                padding: '7px 14px', borderRadius: 7, fontSize: 12,
+                border: '1px solid #fca5a5', background: '#fef2f2',
+                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Delete All
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Delete success banner */}
+      {deleteResult && (
+        <div style={{
+          background: '#f0fdf4', border: '1px solid #86efac',
+          borderRadius: 8, padding: '12px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: 12, color: '#15803d',
+        }}>
+          <span>
+            Deleted {deleteResult.deleted_documents} document{deleteResult.deleted_documents !== 1 ? 's' : ''} and{' '}
+            {deleteResult.deleted_images} image{deleteResult.deleted_images !== 1 ? 's' : ''} from {deleteResult.scope}.
+          </span>
+          <button onClick={() => setDeleteResult(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', fontSize: 16, lineHeight: 1 }}>×</button>
+        </div>
+      )}
 
       {loading && <LoadingSpinner message={`Loading row ${selectedRow} data…`} />}
 

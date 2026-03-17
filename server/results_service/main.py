@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 
 from bson import ObjectId
 from bson.errors import InvalidId
+from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -290,6 +291,53 @@ async def get_all_data():
         })
 
     return {"documents": result}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /deleteData
+# ---------------------------------------------------------------------------
+
+@app.delete("/deleteData")
+async def delete_data(row: Optional[int] = Query(None, description="Row number to delete; omit to delete all rows")):
+    """
+    Delete row_data documents and their associated GridFS images.
+    - If `row` is provided: delete only that row's document(s).
+    - If `row` is omitted: delete ALL documents in row_data and ALL images in GridFS.
+    """
+    collection = get_db()["row_data"]
+    bucket = get_gridfs_bucket()
+
+    query = {"greenhouse_row": row} if row is not None else {}
+
+    # Collect all GridFS file IDs referenced by the documents being deleted
+    docs = await collection.find(query, {"timestamps": 1}).to_list(length=None)
+
+    file_ids: list[ObjectId] = []
+    for doc in docs:
+        for ts_entry in doc.get("timestamps", {}).values():
+            for field in ("original_images", "tomato_annotated_images", "flower_annotated_images", "depth_images"):
+                for fid in ts_entry.get(field, []):
+                    try:
+                        file_ids.append(ObjectId(str(fid)))
+                    except Exception:
+                        pass
+
+    # Delete all referenced GridFS files
+    for fid in file_ids:
+        try:
+            await bucket.delete(fid)
+        except Exception:
+            pass  # Already gone or never stored — continue
+
+    # Delete the row_data documents
+    result = await collection.delete_many(query)
+
+    scope = f"row {row}" if row is not None else "all rows"
+    return {
+        "deleted_documents": result.deleted_count,
+        "deleted_images": len(file_ids),
+        "scope": scope,
+    }
 
 
 # ---------------------------------------------------------------------------
