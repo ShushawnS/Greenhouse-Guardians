@@ -13,7 +13,6 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -122,8 +121,7 @@ app.add_middleware(
 async def get_summary_results():
     """
     Aggregate the latest-timestamp classification data across all row_data
-    documents, restricted to locations whose latest timestamp falls within
-    the last 6.99 days.  Image arrays are excluded — only counts and summaries.
+    documents.  Image arrays are excluded — only counts and summaries.
     """
     collection = get_db()["row_data"]
     docs = await collection.find(
@@ -139,9 +137,6 @@ async def get_summary_results():
     total_tomatoes: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
     total_flowers: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
-    # Only include locations whose latest timestamp is within the last 6.99 days
-    cutoff = datetime.now(timezone.utc) - timedelta(days=6.99)
-
     # Build per-row map: row_number → list of distance entries
     rows_map: dict[int, list[dict]] = {}
 
@@ -153,14 +148,6 @@ async def get_summary_results():
         ts_key = _latest_ts_key(timestamps)
         if ts_key is None:
             continue
-
-        # Skip if latest timestamp is older than the cutoff
-        try:
-            ts_dt = datetime.fromisoformat(_key_to_ts(ts_key)).replace(tzinfo=timezone.utc)
-            if ts_dt < cutoff:
-                continue
-        except ValueError:
-            pass
 
         ts_entry = timestamps[ts_key]
         tomato_cls = ts_entry.get("tomato_classification")
