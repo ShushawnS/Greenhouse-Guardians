@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 const BBOX_COLORS = {
   Ripe:           '#22c55e',
@@ -35,7 +36,7 @@ export default function ImageModal({ image, onClose }) {
 
   const detections = image.detections || []
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
       onClick={onClose}
@@ -109,6 +110,7 @@ export default function ImageModal({ image, onClose }) {
           <p className="text-white/30 text-xs mt-1">Hover over bounding boxes for details</p>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
