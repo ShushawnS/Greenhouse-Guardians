@@ -89,7 +89,7 @@ export default function RowVisualizer({ distances = [], selectedIdx, onSelect })
                   width: 24, height: 24, borderRadius: '50%',
                   background: color + '22',
                   border: `1.5px solid ${color}55`,
-                  transition: 'all 0.2s ease',
+                  transition: 'opacity 0.2s ease, transform 0.2s ease',
                 }} />
               )}
               {/* Dot */}
@@ -102,7 +102,7 @@ export default function RowVisualizer({ distances = [], selectedIdx, onSelect })
                 boxShadow: isSelected
                   ? `0 0 0 2px ${color}88`
                   : '0 1px 3px rgba(28,25,23,0.15)',
-                transition: 'all 0.18s ease',
+                transition: 'width 0.18s ease, height 0.18s ease, box-shadow 0.18s ease',
                 position: 'relative', zIndex: 1,
               }} />
 

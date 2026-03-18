@@ -1,7 +1,6 @@
 import { C } from '../tokens'
 
-export default function StatCard({ title, value, subtitle, breakdown, icon }) {
-  // Total for percentage calculation
+export default function StatCard({ title, value, subtitle, breakdown, icon, imgSrc, badge }) {
   const total = breakdown ? breakdown.reduce((s, b) => s + (b.count || 0), 0) : 0
 
   return (
@@ -14,9 +13,20 @@ export default function StatCard({ title, value, subtitle, breakdown, icon }) {
       flexDirection: 'column',
       gap: 10,
     }}>
-      {/* Title */}
-      <div style={{ fontSize: 11, fontWeight: 500, color: C.t2, letterSpacing: '0.02em' }}>
-        {title}
+      {/* Title row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.t2, letterSpacing: '0.02em' }}>
+          {title}
+        </div>
+        {badge && (
+          <div style={{
+            fontSize: 10, fontWeight: 600, color: badge.color ?? C.green,
+            background: badge.bg ?? C.greenDim,
+            borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap',
+          }}>
+            {badge.label}
+          </div>
+        )}
       </div>
 
       {/* Value */}
@@ -29,20 +39,22 @@ export default function StatCard({ title, value, subtitle, breakdown, icon }) {
         )}
       </div>
 
-      {/* Breakdown — with icon layout if icon provided */}
+      {/* Breakdown */}
       {breakdown && (
         <div style={{ paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
-          {icon ? (
-            /* Icon-left layout: mirrors the donut + legend layout */
-            <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          {(imgSrc || icon) ? (
+            /* Image / icon left layout — mirrors the donut + legend layout */
+            <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
               <div style={{
-                flexShrink: 0, width: 160, height: 160,
+                flexShrink: 0, width: 140, height: 140,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 96, lineHeight: 1,
               }}>
-                {icon}
+                {imgSrc
+                  ? <img src={imgSrc} alt="" style={{ width: 130, height: 130, objectFit: 'contain' }} />
+                  : <span style={{ fontSize: 88, lineHeight: 1 }}>{icon}</span>
+                }
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 11, flex: 1, minWidth: 0 }}>
                 {breakdown.map(({ label, count, color }) => {
                   const pct = total > 0 ? Math.round((count / total) * 100) : 0
                   return (

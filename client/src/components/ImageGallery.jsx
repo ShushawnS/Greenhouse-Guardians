@@ -25,7 +25,7 @@ export default function ImageGallery({ images = [], emptyMessage = 'No images av
               <img
                 src={img.src}
                 alt={img.label || `Image ${i + 1}`}
-                className="h-48 w-auto rounded-lg border border-gray-200 object-cover shadow-sm group-hover:shadow-md group-hover:border-green-300 transition-all"
+                className="h-48 w-auto rounded-lg border border-gray-200 object-cover shadow-sm group-hover:shadow-md group-hover:border-green-300 transition-[box-shadow,border-color] outline outline-1 -outline-offset-1 outline-black/[0.06]"
               />
               {/* Click hint overlay */}
               <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">

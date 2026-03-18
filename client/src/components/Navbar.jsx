@@ -34,18 +34,20 @@ export default function Navbar() {
     }}>
       <div style={{
         maxWidth: 1280, margin: '0 auto', padding: '0 24px',
-        height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 48, display: 'flex', alignItems: 'center',
       }}>
-        {/* Brand */}
-        <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}>
-          <LeafIcon />
-          <span style={{ fontSize: 13, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>
-            GreenhouseGuardians
-          </span>
-        </NavLink>
+        {/* Brand — left column */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+          <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none' }}>
+            <LeafIcon />
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>
+              GreenhouseGuardians
+            </span>
+          </NavLink>
+        </div>
 
-        {/* Desktop nav links */}
-        <div className="nav-links-wrap" style={{ alignItems: 'center', height: '100%' }}>
+        {/* Desktop nav links — center column */}
+        <div className="nav-links-wrap" style={{ alignItems: 'center', height: '100%', justifyContent: 'center' }}>
           {links.map(({ to, label }) => (
             <NavLink
               key={to}
@@ -71,42 +73,46 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Gear icon — settings */}
-        <NavLink
-          to="/settings"
-          style={({ isActive }) => ({
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: 32, height: 32, borderRadius: 7, marginLeft: 4,
-            color: isActive ? C.green : C.t3,
-            background: isActive ? C.greenDim : 'transparent',
-            border: `1px solid ${isActive ? C.green + '44' : 'transparent'}`,
-            textDecoration: 'none',
-            transition: 'all 0.14s',
-            flexShrink: 0,
-          })}
-          title="Settings"
-        >
-          <GearIcon />
-        </NavLink>
+        {/* Right column — gear icon + hamburger */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+          {/* Gear icon — settings, desktop only */}
+          <NavLink
+            to="/settings"
+            className="nav-links-wrap"
+            style={({ isActive }) => ({
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 7,
+              color: isActive ? C.green : C.t3,
+              background: isActive ? C.greenDim : 'transparent',
+              border: `1px solid ${isActive ? C.green + '44' : 'transparent'}`,
+              textDecoration: 'none',
+              transition: 'color 0.14s ease, background 0.14s ease, border-color 0.14s ease',
+              flexShrink: 0,
+            })}
+            title="Settings"
+          >
+            <GearIcon />
+          </NavLink>
 
-        {/* Hamburger — mobile only */}
-        <button
-          className="nav-ham"
-          onClick={() => setMenuOpen(o => !o)}
-          aria-label="Toggle menu"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.t2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            {menuOpen
-              ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
-              : <><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>
-            }
-          </svg>
-        </button>
+          {/* Hamburger — mobile only */}
+          <button
+            className="nav-ham"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label="Toggle menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.t2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {menuOpen
+                ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
+                : <><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>
+              }
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Mobile dropdown menu */}
       {menuOpen && (
-        <div style={{
+        <div className="mobile-menu-in" style={{
           background: C.bg1,
           borderBottom: `1px solid ${C.border}`,
           display: 'flex',

@@ -1,5 +1,7 @@
 import { useSettings } from '../context/SettingsContext'
+import { useNavigate } from 'react-router-dom'
 import { C } from '../tokens'
+import { saveGreenhouseConfig } from '../hooks/useGreenhouseConfig'
 
 /* ── Toggle switch ── */
 function Toggle({ value, onChange }) {
@@ -19,11 +21,13 @@ function Toggle({ value, onChange }) {
     >
       <span style={{
         position: 'absolute',
-        top: 2, left: value ? 22 : 2,
+        top: 2, left: 2,
         width: 16, height: 16, borderRadius: '50%',
         background: '#fff',
         boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-        transition: 'left 0.2s',
+        transform: value ? 'translateX(20px)' : 'translateX(0)',
+        transition: 'transform 0.2s ease',
+        willChange: 'transform',
       }} />
     </button>
   )
@@ -73,6 +77,7 @@ function SettingRow({ label, description, control }) {
 
 export default function Settings() {
   const { settings, updateSettings, resetSettings, DEFAULTS } = useSettings()
+  const navigate = useNavigate()
 
   const isDirty =
     settings.confidenceThreshold !== DEFAULTS.confidenceThreshold ||
@@ -144,7 +149,7 @@ export default function Settings() {
                   background: active ? C.greenDim : C.bg2,
                   color: active ? C.green : C.t2,
                   cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'all 0.12s',
+                  transition: 'background 0.12s ease, color 0.12s ease, border-color 0.12s ease',
                 }}
               >
                 {label}
@@ -171,6 +176,32 @@ export default function Settings() {
         />
       </Section>
 
+      {/* Demo */}
+      <Section
+        title="Demo"
+        subtitle="Onboarding and greenhouse configuration"
+      >
+        <SettingRow
+          label="Replay intro"
+          description="Restart the onboarding flow to reconfigure your greenhouse rows or revisit the how-it-works walkthrough."
+          control={
+            <button
+              onClick={() => { saveGreenhouseConfig(null); navigate('/onboarding') }}
+              style={{
+                padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${C.border2}`,
+                background: C.bg2, color: C.t2,
+                cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                transition: 'background 0.12s ease, color 0.12s ease, border-color 0.12s ease',
+              }}
+            >
+              ↺ Replay intro
+            </button>
+          }
+        />
+      </Section>
+
       {/* Footer */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 11, color: C.t3 }}>
@@ -184,7 +215,7 @@ export default function Settings() {
             border: `1px solid ${isDirty ? C.border2 : C.border}`,
             background: C.bg2, color: isDirty ? C.t2 : C.t3,
             cursor: isDirty ? 'pointer' : 'not-allowed',
-            fontFamily: 'inherit', transition: 'all 0.12s',
+            fontFamily: 'inherit', transition: 'background 0.12s ease, color 0.12s ease, border-color 0.12s ease',
           }}
         >
           Reset to defaults

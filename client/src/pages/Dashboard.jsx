@@ -1,79 +1,13 @@
 import { useEffect, useState } from 'react'
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 import { getSummaryResults } from '../api'
 import StatCard from '../components/StatCard'
-import ChartCard, { ChartTooltip } from '../components/ChartCard'
+import ChartCard from '../components/ChartCard'
+import DonutChart from '../components/DonutChart'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 import GreenhouseHeatmap from '../components/GreenhouseHeatmap'
-
-/* ── Donut chart with a centre label and a right-hand legend ── */
-function DonutChart({ data, total }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-      {/* Donut */}
-      <div style={{ position: 'relative', flexShrink: 0, width: 160, height: 160 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%" cy="50%"
-              innerRadius={52} outerRadius={74}
-              paddingAngle={3}
-              dataKey="count"
-              strokeWidth={0}
-            >
-              {data.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} stroke="none" />
-              ))}
-            </Pie>
-            <Tooltip content={<ChartTooltip />} wrapperStyle={{ zIndex: 100 }} />
-          </PieChart>
-        </ResponsiveContainer>
-        {/* Centre label */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          textAlign: 'center', pointerEvents: 'none',
-        }}>
-          <div style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.5px', lineHeight: 1 }} className="num">
-            {total.toLocaleString()}
-          </div>
-          <div style={{ fontSize: 10, color: C.t3, marginTop: 3 }}>total</div>
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
-        {data.map(({ name, count, fill }) => {
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0
-          return (
-            <div key={name}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: fill, flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: C.t2 }}>{name}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count.toLocaleString()}</span>
-                  <span style={{ fontSize: 10, color: C.t3 }} className="num">{pct}%</span>
-                </div>
-              </div>
-              {/* Progress bar */}
-              <div style={{ height: 4, background: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', width: `${pct}%`,
-                  background: fill, borderRadius: 2,
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+import { getGreenhouseConfig } from '../hooks/useGreenhouseConfig'
+import tomatoImg from '../assets/tomato.png'
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -104,10 +38,12 @@ export default function Dashboard() {
 
   if (!data) return null
 
+  const ghConfig = getGreenhouseConfig()
   const { total_tomatoes = {}, total_flowers = {}, total_tomato_count = 0, total_flower_count = 0, rows = [] } = data
   const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = total_tomatoes
   const AVG_TOMATO_KG = 0.15
   const estimatedYieldKg = ((Ripe + Half_Ripe * 0.8 + Unripe * 0.5) * AVG_TOMATO_KG).toFixed(1)
+  const harvestReadyPct = total_tomato_count > 0 ? Math.round((Ripe / total_tomato_count) * 100) : 0
 
   const tomatoData = [
     { name: 'Ripe',      count: Ripe,      fill: TOMATO_COLORS.Ripe },
@@ -124,9 +60,23 @@ export default function Dashboard() {
     <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       {/* Page header */}
-      <div>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Dashboard</h1>
-        <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Overview of your greenhouse — latest data from all rows</p>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: C.t1, letterSpacing: '-0.3px' }}>Dashboard</h1>
+          <p style={{ fontSize: 12, color: C.t3, marginTop: 4 }}>Overview of your greenhouse — latest data from all rows</p>
+        </div>
+        {ghConfig && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: C.greenDim, border: `1px solid ${C.green}33`,
+            borderRadius: 20, padding: '4px 12px',
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 500, color: C.green }}>
+              Monitoring {ghConfig.numRows} {ghConfig.numRows === 1 ? 'row' : 'rows'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Combined chart + stat cards */}
@@ -141,9 +91,14 @@ export default function Dashboard() {
 
         <StatCard
           title="Estimated Yield"
-          icon="🍅"
+          imgSrc={tomatoImg}
           value={`${estimatedYieldKg} kg`}
-          subtitle="Weighted estimate · ~150g per tomato"
+          subtitle="~150g per tomato · weighted by ripeness"
+          badge={harvestReadyPct > 0 ? {
+            label: `${harvestReadyPct}% harvest-ready`,
+            color: harvestReadyPct >= 60 ? C.green : harvestReadyPct >= 30 ? C.halfRipe : C.t3,
+            bg: harvestReadyPct >= 60 ? C.greenDim : harvestReadyPct >= 30 ? C.halfRipeDim : C.bg3,
+          } : undefined}
           breakdown={[
             { label: 'Ripe (×1.0)',      count: Math.round(Ripe * AVG_TOMATO_KG * 10) / 10,      color: TOMATO_COLORS.Ripe },
             { label: 'Half Ripe (×0.8)', count: Math.round(Half_Ripe * 0.8 * AVG_TOMATO_KG * 10) / 10, color: TOMATO_COLORS.Half_Ripe },

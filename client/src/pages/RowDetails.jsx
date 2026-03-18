@@ -4,8 +4,9 @@ import RowVisualizer from '../components/RowVisualizer'
 import ImageGallery from '../components/ImageGallery'
 import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
+import { getConfiguredRows } from '../hooks/useGreenhouseConfig'
 
-const ROW_OPTIONS = Array.from({ length: 5 }, (_, i) => i + 1)
+const ROW_OPTIONS = getConfiguredRows()
 const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
 function formatTs(ts) {
@@ -51,7 +52,7 @@ function DeleteModal({ mode, rowNum, onConfirm, onCancel, loading }) {
       background: 'rgba(0,0,0,0.45)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <div style={{
+      <div className="page-in" style={{
         background: C.bg1,
         border: `1px solid ${C.border}`,
         borderRadius: 12,
@@ -103,6 +104,7 @@ function DeleteModal({ mode, rowNum, onConfirm, onCancel, loading }) {
           <button
             onClick={onCancel}
             disabled={loading}
+            className="btn-press"
             style={{
               padding: '8px 18px', borderRadius: 7, fontSize: 13,
               border: `1px solid ${C.border}`, background: C.bg2,
@@ -114,13 +116,14 @@ function DeleteModal({ mode, rowNum, onConfirm, onCancel, loading }) {
           <button
             onClick={onConfirm}
             disabled={!ready || loading}
+            className="btn-press"
             style={{
               padding: '8px 18px', borderRadius: 7, fontSize: 13,
               border: 'none', fontFamily: 'inherit',
               background: ready && !loading ? '#ef4444' : '#fca5a5',
               color: '#fff',
               cursor: ready && !loading ? 'pointer' : 'not-allowed',
-              transition: 'background 0.12s',
+              transition: 'background 0.12s ease',
             }}
           >
             {loading ? 'Deleting…' : 'Delete'}
@@ -167,15 +170,16 @@ function RowSelector({ value, onChange }) {
             <button
               key={r}
               onClick={() => onChange(r)}
+              className="btn-press"
               style={{
-                width: 30, height: 30,
+                width: 40, height: 40,
                 borderRadius: 7,
                 background: active ? C.green : C.bg3,
                 color: active ? '#fff' : C.t2,
                 border: active ? `1px solid ${C.green}` : `1px solid ${C.border}`,
                 fontSize: 12, fontWeight: active ? 600 : 400,
                 cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'background 0.12s, color 0.12s',
+                transition: 'background 0.12s ease, color 0.12s ease, border-color 0.12s ease',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -291,22 +295,24 @@ export default function RowDetails() {
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => { setDeleteResult(null); setDeleteMode('row') }}
+              className="btn-press"
               style={{
-                padding: '7px 14px', borderRadius: 7, fontSize: 12,
-                border: '1px solid #fca5a5', background: '#fef2f2',
-                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
+                padding: '7px 14px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${C.red}44`, background: C.redDim,
+                color: C.red, cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap', transition: 'background 0.12s ease, border-color 0.12s ease',
               }}
             >
               Delete Row {selectedRow}
             </button>
             <button
               onClick={() => { setDeleteResult(null); setDeleteMode('all') }}
+              className="btn-press"
               style={{
-                padding: '7px 14px', borderRadius: 7, fontSize: 12,
-                border: '1px solid #fca5a5', background: '#fef2f2',
-                color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
+                padding: '7px 14px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${C.red}44`, background: C.redDim,
+                color: C.red, cursor: 'pointer', fontFamily: 'inherit',
+                whiteSpace: 'nowrap', transition: 'background 0.12s ease, border-color 0.12s ease',
               }}
             >
               Delete All

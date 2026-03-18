@@ -50,105 +50,87 @@ function DetailPanel({ point, rowNum, onClose }) {
   if (!point) return null
   const tc = point.tomato_summary
   const fc = point.flower_summary
-  const totalT = tc?.total || 0
-  const totalF = fc?.total_flowers || 0
   const bc = tc?.by_class || {}
   const sc = fc?.stage_counts || {}
+  const totalT = tc?.total || 0
+  const totalF = fc?.total_flowers || 0
+
+  const tomatoItems = [
+    { label: 'Ripe',      count: bc.Ripe      || 0, color: TOMATO_COLORS.Ripe },
+    { label: 'Half Ripe', count: bc.Half_Ripe || 0, color: TOMATO_COLORS.Half_Ripe },
+    { label: 'Unripe',    count: bc.Unripe    || 0, color: TOMATO_COLORS.Unripe },
+  ].filter(r => r.count > 0)
+
+  const flowerItems = [
+    { label: 'Bud',          count: sc['0'] || 0, color: FLOWER_COLORS['0'] },
+    { label: 'Anthesis',     count: sc['1'] || 0, color: FLOWER_COLORS['1'] },
+    { label: 'Post-Anthesis', count: sc['2'] || 0, color: FLOWER_COLORS['2'] },
+  ].filter(r => r.count > 0)
 
   return (
-    <div style={{
-      background: C.bg1,
-      position: 'relative',
-    }}>
+    <div style={{ background: C.bg1, position: 'relative' }}>
       {/* Close */}
       <button
         onClick={onClose}
         style={{
-          position: 'absolute', top: 12, right: 14,
+          position: 'absolute', top: 0, right: 0,
           background: 'none', border: 'none', cursor: 'pointer',
           color: C.t3, fontSize: 16, lineHeight: 1, padding: 4,
         }}
         aria-label="Close"
       >×</button>
 
-      {/* Header */}
-      <div style={{ marginBottom: 14 }}>
+      {/* Location + timestamp */}
+      <div style={{ marginBottom: 14, paddingRight: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: C.t1 }}>
-          Row {rowNum} · <span className="num">{point.distanceFromRowStart}m</span> from start
+          Row {rowNum} · <span className="num">{point.distanceFromRowStart}m</span>
         </div>
-        <div style={{ fontSize: 11, color: C.t3, marginTop: 3 }}>
-          Last updated:{' '}
+        <div style={{ fontSize: 11, color: C.t3, marginTop: 2 }}>
           {point.latest_timestamp
-            ? new Date(point.latest_timestamp).toLocaleString(undefined, {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit',
-              })
-            : '—'}
+            ? new Date(point.latest_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : 'No data'}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-        {/* Tomatoes */}
-        <div style={{ minWidth: 160 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: C.t2, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Tomatoes <span style={{ fontWeight: 600, color: C.t1 }} className="num">({totalT})</span>
+      {/* Stats */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {totalT > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>
+              Tomatoes · <span style={{ fontWeight: 600, color: C.t1 }} className="num">{totalT}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+              {tomatoItems.map(({ label, count, color }) => (
+                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.t2 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: C.t1 }} className="num">{count}</span>
+                  <span style={{ fontSize: 11 }}>{label}</span>
+                </span>
+              ))}
+            </div>
           </div>
-          {[
-            { label: 'Ripe',      count: bc.Ripe || 0,      color: TOMATO_COLORS.Ripe },
-            { label: 'Half Ripe', count: bc.Half_Ripe || 0, color: TOMATO_COLORS.Half_Ripe },
-            { label: 'Unripe',    count: bc.Unripe || 0,    color: TOMATO_COLORS.Unripe },
-          ].map(({ label, count, color }) => {
-            const pct = totalT > 0 ? Math.round((count / totalT) * 100) : 0
-            return (
-              <div key={label} style={{ marginBottom: 7 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
-                    <span style={{ fontSize: 10, color: C.t3 }} className="num">{pct}%</span>
-                  </div>
-                </div>
-                <div style={{ height: 3, background: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        )}
 
-        {/* Divider */}
-        <div style={{ width: 1, background: C.border, alignSelf: 'stretch' }} />
-
-        {/* Flowers */}
-        <div style={{ minWidth: 160 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: C.t2, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Flowers <span style={{ fontWeight: 600, color: C.t1 }} className="num">({totalF})</span>
+        {totalF > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>
+              Flowers · <span style={{ fontWeight: 600, color: C.t1 }} className="num">{totalF}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+              {flowerItems.map(({ label, count, color }) => (
+                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.t2 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: C.t1 }} className="num">{count}</span>
+                  <span style={{ fontSize: 11 }}>{label}</span>
+                </span>
+              ))}
+            </div>
           </div>
-          {['0', '1', '2'].map(stage => {
-            const count = sc[stage] || 0
-            const pct = totalF > 0 ? Math.round((count / totalF) * 100) : 0
-            return (
-              <div key={stage} style={{ marginBottom: 7 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: FLOWER_COLORS[stage], flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, color: C.t2 }}>{FLOWER_LABELS[stage]}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
-                    <span style={{ fontSize: 10, color: C.t3 }} className="num">{pct}%</span>
-                  </div>
-                </div>
-                <div style={{ height: 3, background: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: FLOWER_COLORS[stage], borderRadius: 2 }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        )}
+
+        {totalT === 0 && totalF === 0 && (
+          <span style={{ fontSize: 12, color: C.t3, fontStyle: 'italic' }}>No classification data</span>
+        )}
       </div>
     </div>
   )
@@ -316,7 +298,7 @@ export default function GreenhouseHeatmap({ rows = [] }) {
                           ? `0 0 0 2px ${col}88`
                           : '0 1px 4px rgba(28,25,23,0.18)',
                         position: 'relative', zIndex: 1,
-                        transition: 'all 0.15s ease',
+                        transition: 'width 0.15s ease, height 0.15s ease, box-shadow 0.15s ease',
                       }} />
                     </button>
                   )

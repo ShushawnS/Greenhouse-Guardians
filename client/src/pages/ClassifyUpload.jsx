@@ -4,6 +4,7 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import ImageGallery from '../components/ImageGallery'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 import { useSettings } from '../context/SettingsContext'
+import { getGreenhouseConfig } from '../hooks/useGreenhouseConfig'
 
 const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
@@ -57,6 +58,68 @@ const inputStyle = {
   background: C.bg1,
   outline: 'none',
   fontFamily: 'inherit',
+}
+
+/* ── Row selector — uses configured rows from onboarding (falls back to 1–10) ── */
+function RowSelector({ value, onChange }) {
+  const cfg = getGreenhouseConfig()
+  const numRows = cfg?.numRows ?? 10
+  const rows = Array.from({ length: numRows }, (_, i) => i + 1)
+
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+      {rows.map(r => {
+        const active = String(value) === String(r)
+        return (
+          <button
+            key={r}
+            type="button"
+            onClick={() => onChange(String(r))}
+            className="btn-press"
+            style={{
+              width: 40, height: 40, borderRadius: 7,
+              border: `1px solid ${active ? C.green : C.border2}`,
+              background: active ? C.green : C.bg1,
+              color: active ? '#fff' : C.t2,
+              fontSize: 12, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'background 0.13s ease, color 0.13s ease, border-color 0.13s ease',
+            }}
+          >
+            {r}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── Distance input — shows interval hints from config ── */
+function DistanceInput({ row, distance, onChange }) {
+  const cfg = getGreenhouseConfig()
+  const rowCfg = cfg?.rows?.find(r => String(r.rowNumber) === String(row))
+  const maxLen = rowCfg?.length
+  const interval = rowCfg?.interval
+
+  return (
+    <div>
+      <input
+        type="number"
+        min="0"
+        max={maxLen || undefined}
+        step={interval || '0.1'}
+        value={distance}
+        onChange={e => onChange(e.target.value)}
+        placeholder={interval ? `e.g. 0, ${interval}, ${interval * 2}…` : 'e.g. 10.5'}
+        style={inputStyle}
+      />
+      {maxLen && (
+        <p style={{ fontSize: 10, color: C.t3, marginTop: 4 }}>
+          Row {row} is {maxLen} m — interval every {interval} m
+        </p>
+      )}
+    </div>
+  )
 }
 
 export default function ClassifyUpload() {
@@ -180,14 +243,15 @@ export default function ClassifyUpload() {
               position: 'relative', width: 38, height: 22, borderRadius: 11,
               background: demoMode ? C.green : C.bg4,
               border: 'none', cursor: 'pointer', flexShrink: 0,
-              transition: 'background 0.2s',
+              transition: 'background 0.2s ease',
             }}
           >
             <span style={{
-              position: 'absolute', top: 3, width: 16, height: 16,
+              position: 'absolute', top: 3, left: 3, width: 16, height: 16,
               borderRadius: '50%', background: C.bg1,
-              left: demoMode ? 19 : 3,
-              transition: 'left 0.2s',
+              transform: demoMode ? 'translateX(16px)' : 'translateX(0)',
+              transition: 'transform 0.2s ease',
+              willChange: 'transform',
             }} />
           </button>
         </div>
@@ -200,12 +264,10 @@ export default function ClassifyUpload() {
             </div>
             <div className="rg-3" style={{ gap: 12 }}>
               <Field label="Greenhouse Row">
-                <input type="number" min="1" value={row} onChange={e => setRow(e.target.value)}
-                  placeholder="e.g. 1" style={inputStyle} />
+                <RowSelector value={row} onChange={setRow} />
               </Field>
               <Field label="Distance from Row Start (m)">
-                <input type="number" min="0" step="0.1" value={distance} onChange={e => setDistance(e.target.value)}
-                  placeholder="e.g. 10.5" style={inputStyle} />
+                <DistanceInput row={row} distance={distance} onChange={setDistance} />
               </Field>
               <Field label="Timestamp">
                 <input type="text" value={timestamp} onChange={e => setTimestamp(e.target.value)}
@@ -289,6 +351,7 @@ export default function ClassifyUpload() {
         <button
           type="submit"
           disabled={loading || !files.length}
+          className="btn-press"
           style={{
             width: '100%',
             background: loading || !files.length ? C.bg3 : C.green,
@@ -296,7 +359,7 @@ export default function ClassifyUpload() {
             border: 'none', borderRadius: 8, padding: '12px 0',
             fontSize: 13, fontWeight: 500, cursor: loading || !files.length ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit', letterSpacing: '0.01em',
-            transition: 'background 0.15s',
+            transition: 'background 0.15s ease',
           }}
         >
           {loading ? 'Classifying…' : demoMode ? 'Run Demo Classification' : 'Classify & Save'}

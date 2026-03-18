@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { getAllData, API_BASE } from '../api/index.js'
-import { C } from '../tokens'
+import { C, TOMATO_COLORS, FLOWER_COLORS } from '../tokens'
 import ImageModal from '../components/ImageModal'
+import StatCard from '../components/StatCard'
 import { useSettings } from '../context/SettingsContext'
 
 const POLL_MS          = 20_000
@@ -193,7 +194,7 @@ function TimelineEntry({ entry, isNew }) {
           background: isNew ? C.green : C.bg4,
           border: `2px solid ${isNew ? C.green : C.border2}`,
           boxShadow: isNew ? `0 0 0 4px ${C.greenDim}` : 'none',
-          zIndex: 1, transition: 'all 0.4s ease',
+          zIndex: 1, transition: 'background 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease',
         }} />
 
         <div style={{
@@ -234,24 +235,13 @@ function TimelineEntry({ entry, isNew }) {
 
           {/* ── Stats body ── */}
           {(tc || fc) ? (
-            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-              {/* Tomato + Flower side by side */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-
-                {/* Tomato ripeness */}
-                {tc ? (
-                  <div>
-                    <div style={{
-                      fontSize: 10, fontWeight: 600, color: C.t3, textTransform: 'uppercase',
-                      letterSpacing: '0.06em', marginBottom: 8,
-                      display: 'flex', alignItems: 'center', gap: 6,
-                    }}>
-                      🍅 Tomato Ripeness
-                      <span style={{ fontWeight: 700, color: C.t1, fontSize: 11, textTransform: 'none', letterSpacing: 0 }} className="num">
-                        ({tomatoTotal})
-                      </span>
-                    </div>
+            <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {tc && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 11, color: C.t3, flexShrink: 0, minWidth: 70 }}>
+                    Tomatoes · <span style={{ fontWeight: 600, color: C.t1 }} className="num">{tomatoTotal}</span>
+                  </span>
+                  <div style={{ flex: 1 }}>
                     <SegBar
                       total={tomatoTotal}
                       segments={[
@@ -260,35 +250,15 @@ function TimelineEntry({ entry, isNew }) {
                         { color: C.unripe,   value: bc.Unripe    || 0 },
                       ]}
                     />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
-                      {[
-                        { label: 'Ripe',      count: bc.Ripe      || 0, color: C.ripe },
-                        { label: 'Half Ripe', count: bc.Half_Ripe || 0, color: C.halfRipe },
-                        { label: 'Unripe',    count: bc.Unripe    || 0, color: C.unripe },
-                      ].filter(r => r.count > 0 || tomatoTotal === 0).map(r => (
-                        <StatRow key={r.label} {...r} total={tomatoTotal} />
-                      ))}
-                    </div>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: 11, color: C.t3, fontStyle: 'italic' }}>No tomato data</span>
-                  </div>
-                )}
-
-                {/* Flower pollination */}
-                {fc ? (
-                  <div style={{ borderLeft: `1px solid ${C.border}`, paddingLeft: 12 }}>
-                    <div style={{
-                      fontSize: 10, fontWeight: 600, color: C.t3, textTransform: 'uppercase',
-                      letterSpacing: '0.06em', marginBottom: 8,
-                      display: 'flex', alignItems: 'center', gap: 6,
-                    }}>
-                      🌸 Pollination Stage
-                      <span style={{ fontWeight: 700, color: C.t1, fontSize: 11, textTransform: 'none', letterSpacing: 0 }} className="num">
-                        ({flowerTotal})
-                      </span>
-                    </div>
+                </div>
+              )}
+              {fc && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 11, color: C.t3, flexShrink: 0, minWidth: 70 }}>
+                    Flowers · <span style={{ fontWeight: 600, color: C.t1 }} className="num">{flowerTotal}</span>
+                  </span>
+                  <div style={{ flex: 1 }}>
                     <SegBar
                       total={flowerTotal}
                       segments={[
@@ -297,47 +267,12 @@ function TimelineEntry({ entry, isNew }) {
                         { color: C.flower2, value: sc['2'] || 0 },
                       ]}
                     />
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 10 }}>
-                      {[
-                        { label: 'Bud',           count: sc['0'] || 0, color: C.flower0 },
-                        { label: 'Anthesis',      count: sc['1'] || 0, color: C.flower1 },
-                        { label: 'Post-Anthesis', count: sc['2'] || 0, color: C.flower2 },
-                      ].filter(r => r.count > 0 || flowerTotal === 0).map(r => (
-                        <StatRow key={r.label} {...r} total={flowerTotal} />
-                      ))}
-                    </div>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: `1px solid ${C.border}`, paddingLeft: 12 }}>
-                    <span style={{ fontSize: 11, color: C.t3, fontStyle: 'italic' }}>No flower data</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Estimated yield strip */}
-              {tc && (
-                <div style={{
-                  background: C.greenDim,
-                  border: `1px solid ${C.green}33`,
-                  borderRadius: 7,
-                  padding: '9px 14px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <span style={{ fontSize: 13 }}>🌿</span>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: C.green }}>Estimated Yield</span>
-                    <span style={{ fontSize: 10, color: C.green + 'aa' }}>
-                      (ripe ×1.0 · half ×0.8 · unripe ×0.5 · 150g avg)
-                    </span>
-                  </div>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: C.green, letterSpacing: '-0.4px' }} className="num">
-                    {estimatedYield} kg
-                  </span>
                 </div>
               )}
             </div>
           ) : (
-            <div style={{ padding: '14px 16px' }}>
+            <div style={{ padding: '12px 16px' }}>
               <span style={{ fontSize: 12, color: C.t3, fontStyle: 'italic' }}>Classification pending</span>
             </div>
           )}
@@ -464,17 +399,25 @@ export default function Timeline() {
     highlightTimer.current = setTimeout(() => setNewIds(new Set()), NEW_HIGHLIGHT_MS)
   }
 
-  const totalTomatoes = entries.reduce((s, e) => s + (e.tomato_classification?.summary?.total        ?? 0), 0)
-  const totalFlowers  = entries.reduce((s, e) => s + (e.flower_classification?.total_flowers         ?? 0), 0)
-  const totalYield    = entries.reduce((s, e) => {
+  const totalTomatoes   = entries.reduce((s, e) => s + (e.tomato_classification?.summary?.total        ?? 0), 0)
+  const totalFlowers    = entries.reduce((s, e) => s + (e.flower_classification?.total_flowers         ?? 0), 0)
+  const totalYield      = entries.reduce((s, e) => {
     const bc = e.tomato_classification?.summary?.by_class ?? {}
     return s + ((bc.Ripe || 0) + (bc.Half_Ripe || 0) * 0.8 + (bc.Unripe || 0) * 0.5) * AVG_TOMATO_KG
   }, 0)
+  const totalRipe       = entries.reduce((s, e) => s + (e.tomato_classification?.summary?.by_class?.Ripe      ?? 0), 0)
+  const totalHalfRipe   = entries.reduce((s, e) => s + (e.tomato_classification?.summary?.by_class?.Half_Ripe ?? 0), 0)
+  const totalUnripe     = entries.reduce((s, e) => s + (e.tomato_classification?.summary?.by_class?.Unripe    ?? 0), 0)
+  const totalStage0     = entries.reduce((s, e) => s + (e.flower_classification?.stage_counts?.['0'] ?? 0), 0)
+  const totalStage1     = entries.reduce((s, e) => s + (e.flower_classification?.stage_counts?.['1'] ?? 0), 0)
+  const totalStage2     = entries.reduce((s, e) => s + (e.flower_classification?.stage_counts?.['2'] ?? 0), 0)
+  const uniqueRows      = new Set(entries.map(e => e.greenhouse_row)).size
+  const harvestReadyPct = totalTomatoes > 0 ? Math.round((totalRipe / totalTomatoes) * 100) : 0
 
   return (
     <div
       className="page-in page-pad"
-      style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}
+      style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}
     >
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
@@ -489,8 +432,8 @@ export default function Timeline() {
           onClick={() => fetchAll({ initial: true })}
           disabled={loading}
           style={{
-            padding: '7px 16px', background: C.green, color: '#fff',
-            fontSize: 13, fontWeight: 500, borderRadius: 8, border: 'none',
+            padding: '7px 14px', background: C.green, color: '#fff',
+            fontSize: 12, fontWeight: 500, borderRadius: 7, border: 'none',
             cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
             fontFamily: 'inherit', flexShrink: 0,
           }}
@@ -499,24 +442,52 @@ export default function Timeline() {
         </button>
       </div>
 
-      {/* Summary chips */}
+      {/* KPI chips */}
       {!loading && entries.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {[
-            { label: 'Events',   value: entries.length.toLocaleString(), color: C.t1 },
-            { label: 'Tomatoes', value: totalTomatoes.toLocaleString(),  color: C.ripe },
-            { label: 'Flowers',  value: totalFlowers.toLocaleString(),   color: C.flower1 },
-            { label: 'Est. Yield', value: `${totalYield.toFixed(1)} kg`, color: C.green },
-          ].map(({ label, value, color }) => (
-            <div key={label} style={{
-              background: C.bg1, border: `1px solid ${C.border}`,
-              borderRadius: 10, padding: '10px 18px',
-              display: 'flex', flexDirection: 'column', gap: 1,
-            }}>
-              <span style={{ fontSize: 10, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-              <span style={{ fontSize: 18, fontWeight: 700, color, letterSpacing: '-0.4px' }} className="num">{value}</span>
-            </div>
-          ))}
+        <div className="rg-4" style={{ gap: 10 }}>
+          {/* Events */}
+          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>Events</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', lineHeight: 1 }} className="num">{entries.length}</div>
+            <div style={{ fontSize: 11, color: C.t3, marginTop: 5 }}>across {uniqueRows} row{uniqueRows !== 1 ? 's' : ''}</div>
+          </div>
+
+          {/* Tomatoes */}
+          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>Tomatoes</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', lineHeight: 1 }} className="num">{totalTomatoes.toLocaleString()}</div>
+            {totalTomatoes > 0 && (
+              <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', gap: 1, marginTop: 10 }}>
+                {[{ c: TOMATO_COLORS.Ripe, v: totalRipe }, { c: TOMATO_COLORS.Half_Ripe, v: totalHalfRipe }, { c: TOMATO_COLORS.Unripe, v: totalUnripe }].map(({ c, v }) =>
+                  v > 0 ? <div key={c} style={{ width: `${(v / totalTomatoes) * 100}%`, background: c, minWidth: 3 }} /> : null
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Flowers */}
+          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>Flowers</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', lineHeight: 1 }} className="num">{totalFlowers.toLocaleString()}</div>
+            {totalFlowers > 0 && (
+              <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', gap: 1, marginTop: 10 }}>
+                {[{ c: FLOWER_COLORS['0'], v: totalStage0 }, { c: FLOWER_COLORS['1'], v: totalStage1 }, { c: FLOWER_COLORS['2'], v: totalStage2 }].map(({ c, v }) =>
+                  v > 0 ? <div key={c} style={{ width: `${(v / totalFlowers) * 100}%`, background: c, minWidth: 3 }} /> : null
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Yield */}
+          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: C.t3, marginBottom: 6 }}>Est. Yield</div>
+            <div style={{ fontSize: 24, fontWeight: 600, color: C.green, letterSpacing: '-0.4px', lineHeight: 1 }} className="num">{totalYield.toFixed(1)} kg</div>
+            {harvestReadyPct > 0 && (
+              <div style={{ fontSize: 11, color: C.t3, marginTop: 5 }}>
+                <span style={{ fontWeight: 600, color: C.green }} className="num">{harvestReadyPct}%</span> harvest-ready
+              </div>
+            )}
+          </div>
         </div>
       )}
 
