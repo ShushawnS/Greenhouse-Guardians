@@ -272,11 +272,11 @@ async def classify_direct(
 
     return {
         "tomato_classification": {
-            "detections": tomato_result["detections"],
+            "images": tomato_result["images"],
             "summary": tomato_result["summary"],
         },
         "flower_classification": {
-            "flowers": flower_result["flowers"],
+            "images": flower_result["images"],
             "total_flowers": flower_result["total_flowers"],
             "stage_counts": flower_result["stage_counts"],
         },

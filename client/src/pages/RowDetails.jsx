@@ -16,25 +16,25 @@ function formatTs(ts) {
   })
 }
 
-function toTomatoDetections(classification) {
-  return (classification?.detections || []).map(d => ({
+function toTomatoDetections(imageData) {
+  return (imageData?.detections || []).map(d => ({
     bbox: d.bbox, label: d.label, confidence: d.confidence,
   }))
 }
 
-function toFlowerDetections(classification) {
-  return (classification?.flowers || []).map(f => ({
+function toFlowerDetections(imageData) {
+  return (imageData?.flowers || []).map(f => ({
     bbox: { x1: f.bounding_box[0], y1: f.bounding_box[1], x2: f.bounding_box[2], y2: f.bounding_box[3] },
     label: FLOWER_STAGE_LABELS[String(f.stage)] ?? `Stage ${f.stage}`,
     confidence: f.confidence,
   }))
 }
 
-function toImgList(urls, labelPrefix, detections = []) {
+function toImgList(urls, labelPrefix, classification, detectionsFn) {
   return (urls || []).map((url, i) => ({
     src: url.startsWith('http') ? url : `${API_BASE}/api/results${url}`,
     label: `${labelPrefix} ${i + 1}`,
-    detections,
+    detections: detectionsFn ? detectionsFn(classification?.images?.[i]) : [],
   }))
 }
 
@@ -253,11 +253,9 @@ export default function RowDetails() {
   const totalTomatoes = rowTotals.Ripe + rowTotals.Half_Ripe + rowTotals.Unripe
 
   /* Selected point: images */
-  const tomatoDetections = toTomatoDetections(selected?.tomato_classification)
-  const flowerDetections  = toFlowerDetections(selected?.flower_classification)
-  const originalImages        = selected ? toImgList(selected.images?.original,        'Original',  [])               : []
-  const tomatoAnnotatedImages = selected ? toImgList(selected.images?.tomato_annotated, 'Annotated', tomatoDetections) : []
-  const flowerAnnotatedImages = selected ? toImgList(selected.images?.flower_annotated, 'Annotated', flowerDetections) : []
+  const originalImages        = selected ? toImgList(selected.images?.original,        'Original',  null,                           null)               : []
+  const tomatoAnnotatedImages = selected ? toImgList(selected.images?.tomato_annotated, 'Annotated', selected.tomato_classification, toTomatoDetections) : []
+  const flowerAnnotatedImages = selected ? toImgList(selected.images?.flower_annotated, 'Annotated', selected.flower_classification,  toFlowerDetections) : []
 
   /* Selected point: counts */
   const selTomato = selected?.tomato_classification?.summary?.by_class || {}

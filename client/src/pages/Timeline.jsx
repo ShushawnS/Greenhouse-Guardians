@@ -153,18 +153,20 @@ function TimelineEntry({ entry, isNew }) {
     (bc.Unripe || 0) * 0.5 * AVG_TOMATO_KG
   ).toFixed(2)
 
-  /* Build detection lists for the modal */
-  const tomatoDetections = (tc?.detections || []).map(d => ({
-    bbox:       d.bbox,
-    label:      d.label,
-    confidence: d.confidence,
-  }))
+  /* Build per-image detection lists for the modal */
+  function tomatoDetectionsForImage(i) {
+    return (tc?.images?.[i]?.detections || []).map(d => ({
+      bbox: d.bbox, label: d.label, confidence: d.confidence,
+    }))
+  }
 
-  const flowerDetections = (fc?.flowers || []).map(f => ({
-    bbox: { x1: f.bounding_box[0], y1: f.bounding_box[1], x2: f.bounding_box[2], y2: f.bounding_box[3] },
-    label:      FLOWER_LABELS[String(f.stage)] ?? `Stage ${f.stage}`,
-    confidence: f.confidence,
-  }))
+  function flowerDetectionsForImage(i) {
+    return (fc?.images?.[i]?.flowers || []).map(f => ({
+      bbox: { x1: f.bounding_box[0], y1: f.bounding_box[1], x2: f.bounding_box[2], y2: f.bounding_box[3] },
+      label: FLOWER_LABELS[String(f.stage)] ?? `Stage ${f.stage}`,
+      confidence: f.confidence,
+    }))
+  }
 
   const imgCount = Math.max(
     entry.images?.original?.length ?? 0,
@@ -386,14 +388,14 @@ function TimelineEntry({ entry, isNew }) {
                             <Thumb
                               src={tomatoPath}
                               label="Tomato Detection"
-                              onClick={() => openModal(tomatoPath, `Tomato Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, tomatoDetections)}
+                              onClick={() => openModal(tomatoPath, `Tomato Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, tomatoDetectionsForImage(i))}
                             />
                           )}
                           {flowerPath && (
                             <Thumb
                               src={flowerPath}
                               label="Flower Detection"
-                              onClick={() => openModal(flowerPath, `Flower Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, flowerDetections)}
+                              onClick={() => openModal(flowerPath, `Flower Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, flowerDetectionsForImage(i))}
                             />
                           )}
                         </div>

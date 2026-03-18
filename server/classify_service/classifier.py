@@ -150,13 +150,16 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
     if tomato_model is None:
         raise RuntimeError("Tomato model not loaded — call load_models() first.")
 
-    all_detections: list[dict] = []
+    per_image: list[dict] = []
     annotated: list[bytes] = []
-    by_class: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
+    agg_by_class: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
 
-    for img_bytes in image_bytes_list:
+    for idx, img_bytes in enumerate(image_bytes_list):
         img = _decode_image(img_bytes)
         results = tomato_model(img, verbose=False, conf=conf_threshold)
+
+        img_detections: list[dict] = []
+        img_by_class: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
 
         for result in results:
             if result.boxes is None:
@@ -167,24 +170,33 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
                 confidence = round(float(box.conf[0]), 4)
                 x1, y1, x2, y2 = (round(float(v), 2) for v in box.xyxy[0])
 
-                all_detections.append({
+                img_detections.append({
                     "class_id": class_id,
                     "label": label,
                     "confidence": confidence,
                     "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
                 })
-                by_class[label] = by_class.get(label, 0) + 1
+                img_by_class[label] = img_by_class.get(label, 0) + 1
+                agg_by_class[label] = agg_by_class.get(label, 0) + 1
 
                 color = _TOMATO_COLORS.get(label, (200, 200, 200))
                 _draw_box(img, x1, y1, x2, y2, color, f"{label} {confidence:.2f}")
 
+        per_image.append({
+            "image_index": idx,
+            "detections": img_detections,
+            "summary": {
+                "total": len(img_detections),
+                "by_class": img_by_class,
+            },
+        })
         annotated.append(_encode_image(img))
 
     return {
-        "detections": all_detections,
+        "images": per_image,
         "summary": {
-            "total": len(all_detections),
-            "by_class": by_class,
+            "total": sum(len(p["detections"]) for p in per_image),
+            "by_class": agg_by_class,
         },
         "annotated_image_bytes": annotated,
     }
@@ -194,13 +206,16 @@ def _run_flower_inference(image_bytes_list: list[bytes], conf_threshold: float =
     if flower_model is None:
         raise RuntimeError("Flower model not loaded — call load_models() first.")
 
-    all_flowers: list[dict] = []
+    per_image: list[dict] = []
     annotated: list[bytes] = []
-    stage_counts: dict[str, int] = {"0": 0, "1": 0, "2": 0}
+    agg_stage_counts: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
-    for img_bytes in image_bytes_list:
+    for idx, img_bytes in enumerate(image_bytes_list):
         img = _decode_image(img_bytes)
         results = flower_model(img, verbose=False, conf=conf_threshold)
+
+        img_flowers: list[dict] = []
+        img_stage_counts: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
         for result in results:
             if result.boxes is None:
@@ -210,24 +225,31 @@ def _run_flower_inference(image_bytes_list: list[bytes], conf_threshold: float =
                 confidence = round(float(box.conf[0]), 4)
                 x1, y1, x2, y2 = (round(float(v), 2) for v in box.xyxy[0])
 
-                all_flowers.append({
+                img_flowers.append({
                     "bounding_box": [x1, y1, x2, y2],
                     "stage": stage,
                     "confidence": confidence,
                 })
                 key = str(stage)
-                stage_counts[key] = stage_counts.get(key, 0) + 1
+                img_stage_counts[key] = img_stage_counts.get(key, 0) + 1
+                agg_stage_counts[key] = agg_stage_counts.get(key, 0) + 1
 
                 color = _FLOWER_COLORS.get(stage, (200, 200, 200))
                 stage_name = FLOWER_CLASSES.get(stage, f"stage_{stage}")
                 _draw_box(img, x1, y1, x2, y2, color, f"{stage_name} {confidence:.2f}")
 
+        per_image.append({
+            "image_index": idx,
+            "flowers": img_flowers,
+            "total_flowers": len(img_flowers),
+            "stage_counts": img_stage_counts,
+        })
         annotated.append(_encode_image(img))
 
     return {
-        "flowers": all_flowers,
-        "total_flowers": len(all_flowers),
-        "stage_counts": stage_counts,
+        "images": per_image,
+        "total_flowers": sum(p["total_flowers"] for p in per_image),
+        "stage_counts": agg_stage_counts,
         "annotated_image_bytes": annotated,
     }
 
@@ -248,8 +270,15 @@ async def classify_tomatoes(image_bytes_list: list[bytes], conf_threshold: float
 
     Returns:
         {
-            "detections": [{"class_id", "label", "confidence", "bbox"}, ...],
-            "summary": {"total": int, "by_class": {"Ripe": int, ...}},
+            "images": [
+                {
+                    "image_index": int,
+                    "detections": [{"class_id", "label", "confidence", "bbox"}, ...],
+                    "summary": {"total": int, "by_class": {"Ripe": int, ...}},
+                },
+                ...
+            ],
+            "summary": {"total": int, "by_class": {"Ripe": int, ...}},  # aggregate across all images
             "annotated_image_bytes": [bytes, ...],   # one per input image
         }
     """
@@ -268,9 +297,17 @@ async def classify_flowers(image_bytes_list: list[bytes], conf_threshold: float 
 
     Returns:
         {
-            "flowers": [{"bounding_box", "stage", "confidence"}, ...],
-            "total_flowers": int,
-            "stage_counts": {"0": int, "1": int, "2": int},
+            "images": [
+                {
+                    "image_index": int,
+                    "flowers": [{"bounding_box", "stage", "confidence"}, ...],
+                    "total_flowers": int,
+                    "stage_counts": {"0": int, "1": int, "2": int},
+                },
+                ...
+            ],
+            "total_flowers": int,       # aggregate across all images
+            "stage_counts": {"0": int, "1": int, "2": int},  # aggregate across all images
             "annotated_image_bytes": [bytes, ...],
         }
     """
