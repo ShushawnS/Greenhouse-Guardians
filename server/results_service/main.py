@@ -24,6 +24,7 @@ from fastapi.responses import Response
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import CORS_ORIGINS
 from shared.db import close_db, get_db, get_gridfs_bucket, ping_db
+from shared.trends import recompute_all_trends, update_daily_trend
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("results_service")
@@ -309,12 +310,15 @@ async def delete_data(row: Optional[int] = Query(None, description="Row number t
 
     query = {"greenhouse_row": row} if row is not None else {}
 
-    # Collect all GridFS file IDs referenced by the documents being deleted
+    # Collect GridFS file IDs and affected dates before deletion
     docs = await collection.find(query, {"timestamps": 1}).to_list(length=None)
 
     file_ids: list[ObjectId] = []
+    affected_dates: set[str] = set()
+
     for doc in docs:
-        for ts_entry in doc.get("timestamps", {}).values():
+        for ts_key, ts_entry in doc.get("timestamps", {}).items():
+            affected_dates.add(ts_key[:10])  # extract YYYY-MM-DD
             for field in ("original_images", "tomato_annotated_images", "flower_annotated_images", "depth_images"):
                 for fid in ts_entry.get(field, []):
                     try:
@@ -332,22 +336,50 @@ async def delete_data(row: Optional[int] = Query(None, description="Row number t
     # Delete the row_data documents
     result = await collection.delete_many(query)
 
+    # Recompute (or remove) daily_trends for every affected date
+    for date_str in affected_dates:
+        await update_daily_trend(date_str)
+
     scope = f"row {row}" if row is not None else "all rows"
     return {
         "deleted_documents": result.deleted_count,
         "deleted_images": len(file_ids),
         "scope": scope,
+        "trend_dates_updated": sorted(affected_dates),
     }
 
 
 # ---------------------------------------------------------------------------
-# GET /getTrends  (stub)
+# GET /getTrends
 # ---------------------------------------------------------------------------
 
 @app.get("/getTrends")
 async def get_trends():
-    """Placeholder — trends over time coming in a future release."""
-    return {"message": "Trends endpoint coming soon", "data": None}
+    """
+    Return all documents from the daily_trends collection, sorted by date ascending.
+    Each document represents one day's aggregated classification results.
+    Returns an empty list if no trend data has been computed yet.
+    """
+    docs = await get_db()["daily_trends"].find(
+        {}, {"_id": 0}
+    ).sort("date", 1).to_list(length=None)
+
+    return {"data": docs, "count": len(docs)}
+
+
+# ---------------------------------------------------------------------------
+# POST /recomputeTrends
+# ---------------------------------------------------------------------------
+
+@app.post("/recomputeTrends")
+async def recompute_trends():
+    """
+    Rebuild the entire daily_trends collection from scratch by scanning all
+    row_data documents.  Useful after bulk imports or data corrections.
+    Returns the list of dates that were processed.
+    """
+    dates = await recompute_all_trends()
+    return {"status": "complete", "dates_processed": dates, "count": len(dates)}
 
 
 # ---------------------------------------------------------------------------

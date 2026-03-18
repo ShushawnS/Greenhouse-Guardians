@@ -27,6 +27,7 @@ from bson import ObjectId
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import make_ts_key
 from shared.db import get_db, get_gridfs_bucket
+from shared.trends import update_daily_trend
 
 # imported lazily at worker start to avoid circular-import issues
 import classifier as _classifier
@@ -168,6 +169,9 @@ async def _process_job(job: dict) -> None:
                 f"{ts_key}.flower_annotated_images":  [str(fid) for fid in flower_ids],
             }},
         )
+
+        # Update daily trend aggregate for this timestamp's date
+        await update_daily_trend(timestamp[:10])
 
         logger.info("Job complete: doc_id=%s ts=%s | tomatoes=%d flowers=%d",
                     doc_id_str, timestamp,

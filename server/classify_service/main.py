@@ -25,6 +25,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import CORS_ORIGINS, make_ts_key
 from shared.db import close_db, get_db, get_gridfs_bucket
+from shared.trends import update_daily_trend
 
 import classifier
 from queue_worker import classification_queue, enqueue_job, start_worker
@@ -232,6 +233,10 @@ async def classify_now(req: ClassifyNowRequest):
         image_bytes_list=image_bytes_list,
         conf_threshold=req.confidence_threshold,
     )
+
+    # Update daily trend aggregate for this timestamp's date
+    date_str = req.timestamp[:10]
+    await update_daily_trend(date_str)
 
     logger.info("classifyNow complete: doc=%s ts=%s", req.document_id, req.timestamp)
     return {"status": "complete", **results}
