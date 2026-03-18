@@ -30,7 +30,7 @@ export function saveGreenhouseConfig(cfg) {
  */
 export function getConfiguredRows() {
   const cfg = getGreenhouseConfig()
-  const n = cfg?.numRows ?? 10
+  const n = cfg?.numRows ?? 5
   return Array.from({ length: n }, (_, i) => i + 1)
 }
 

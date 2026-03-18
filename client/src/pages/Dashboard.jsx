@@ -7,7 +7,6 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 import GreenhouseHeatmap from '../components/GreenhouseHeatmap'
 import { getGreenhouseConfig } from '../hooks/useGreenhouseConfig'
-import tomatoImg from '../assets/tomato.png'
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
@@ -91,7 +90,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Estimated Yield"
-          imgSrc={tomatoImg}
+          icon="🍅"
           value={`${estimatedYieldKg} kg`}
           subtitle="~150g per tomato · weighted by ripeness"
           badge={harvestReadyPct > 0 ? {

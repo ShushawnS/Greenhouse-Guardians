@@ -231,8 +231,8 @@ function StepConfigure({ numRows, setNumRows, onNext, onBack }) {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 28 }}>
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => {
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 28 }}>
+          {[1, 2, 3, 4, 5].map(n => {
             const active = numRows === n
             return (
               <button
@@ -312,7 +312,7 @@ function StepReady({ numRows, onFinish }) {
 export default function Onboarding() {
   const navigate   = useNavigate()
   const [step, setStep]       = useState(1)
-  const [numRows, setNumRows] = useState(6) // pre-filled with 6
+  const [numRows, setNumRows] = useState(5)
 
   const finish = () => {
     saveGreenhouseConfig({

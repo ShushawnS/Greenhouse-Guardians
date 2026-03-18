@@ -6,7 +6,6 @@ import LoadingSpinner from '../components/LoadingSpinner'
 import { C, TOMATO_COLORS, FLOWER_COLORS, FLOWER_LABELS } from '../tokens'
 import { getConfiguredRows } from '../hooks/useGreenhouseConfig'
 
-const ROW_OPTIONS = getConfiguredRows()
 const FLOWER_STAGE_LABELS = FLOWER_LABELS
 
 function formatTs(ts) {
@@ -158,13 +157,14 @@ function BreakdownBar({ label, count, total, color }) {
 
 /* ── Segmented row selector ── */
 function RowSelector({ value, onChange }) {
+  const rowOptions = getConfiguredRows()
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
       <span style={{ fontSize: 11, fontWeight: 500, color: C.t3, letterSpacing: '0.04em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
         Row
       </span>
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-        {ROW_OPTIONS.map(r => {
+        {rowOptions.map(r => {
           const active = value === r
           return (
             <button

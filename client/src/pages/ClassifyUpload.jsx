@@ -63,11 +63,11 @@ const inputStyle = {
 /* ── Row selector — uses configured rows from onboarding (falls back to 1–10) ── */
 function RowSelector({ value, onChange }) {
   const cfg = getGreenhouseConfig()
-  const numRows = cfg?.numRows ?? 10
+  const numRows = cfg?.numRows ?? 5
   const rows = Array.from({ length: numRows }, (_, i) => i + 1)
 
   return (
-    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 5 }}>
       {rows.map(r => {
         const active = String(value) === String(r)
         return (
@@ -77,7 +77,7 @@ function RowSelector({ value, onChange }) {
             onClick={() => onChange(String(r))}
             className="btn-press"
             style={{
-              width: 40, height: 40, borderRadius: 7,
+              flex: 1, height: 40, borderRadius: 7,
               border: `1px solid ${active ? C.green : C.border2}`,
               background: active ? C.green : C.bg1,
               color: active ? '#fff' : C.t2,
@@ -94,30 +94,32 @@ function RowSelector({ value, onChange }) {
   )
 }
 
-/* ── Distance input — shows interval hints from config ── */
-function DistanceInput({ row, distance, onChange }) {
-  const cfg = getGreenhouseConfig()
-  const rowCfg = cfg?.rows?.find(r => String(r.rowNumber) === String(row))
-  const maxLen = rowCfg?.length
-  const interval = rowCfg?.interval
-
+/* ── Distance selector — fixed options 0, 5, 10, 15, 20 m ── */
+function DistanceInput({ distance, onChange }) {
   return (
-    <div>
-      <input
-        type="number"
-        min="0"
-        max={maxLen || undefined}
-        step={interval || '0.1'}
-        value={distance}
-        onChange={e => onChange(e.target.value)}
-        placeholder={interval ? `e.g. 0, ${interval}, ${interval * 2}…` : 'e.g. 10.5'}
-        style={inputStyle}
-      />
-      {maxLen && (
-        <p style={{ fontSize: 10, color: C.t3, marginTop: 4 }}>
-          Row {row} is {maxLen} m — interval every {interval} m
-        </p>
-      )}
+    <div style={{ display: 'flex', gap: 5 }}>
+      {[0, 5, 10, 15, 20].map(d => {
+        const active = Number(distance) === d && distance !== ''
+        return (
+          <button
+            key={d}
+            type="button"
+            onClick={() => onChange(String(d))}
+            className="btn-press"
+            style={{
+              flex: 1, height: 40, borderRadius: 7,
+              border: `1px solid ${active ? C.green : C.border2}`,
+              background: active ? C.green : C.bg1,
+              color: active ? '#fff' : C.t2,
+              fontSize: 12, fontWeight: 500,
+              cursor: 'pointer', fontFamily: 'inherit',
+              transition: 'background 0.13s ease, color 0.13s ease, border-color 0.13s ease',
+            }}
+          >
+            {d}m
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -267,7 +269,7 @@ export default function ClassifyUpload() {
                 <RowSelector value={row} onChange={setRow} />
               </Field>
               <Field label="Distance from Row Start (m)">
-                <DistanceInput row={row} distance={distance} onChange={setDistance} />
+                <DistanceInput distance={distance} onChange={setDistance} />
               </Field>
               <Field label="Timestamp">
                 <input type="text" value={timestamp} onChange={e => setTimestamp(e.target.value)}
