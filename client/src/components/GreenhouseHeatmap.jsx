@@ -24,21 +24,31 @@ function pointColour(d) {
 function buildGradient(points, maxDist) {
   if (!points.length) return C.bg3
 
-  const sorted = [...points].sort((a, b) => a.distanceFromRowStart - b.distanceFromRowStart)
+  const sorted = [...points]
+    .sort((a, b) => a.distanceFromRowStart - b.distanceFromRowStart)
+    .filter(d => pointColour(d) !== C.t3)  // skip no-data points
+
+  if (!sorted.length) return C.bg3  // all points have no data → neutral band
+
   const stops = []
 
   sorted.forEach((d, i) => {
     const pct = maxDist > 0 ? ((d.distanceFromRowStart / maxDist) * 100).toFixed(1) : 50
-    const col = pointColour(d)
+    const hue = (() => {
+      const bc = d.tomato_summary?.by_class || {}
+      const r = bc.Ripe || 0, h = bc.Half_Ripe || 0, u = bc.Unripe || 0
+      const total = r + h + u
+      return Math.round((r / total) * 115 + (h / total) * 40)
+    })()
 
     // Fade in from transparent before the first point
     if (i === 0 && parseFloat(pct) > 3) {
-      stops.push(`${col}22 0%`)
+      stops.push(`hsla(${hue},65%,45%,0.08) 0%`)
     }
-    stops.push(`${col}cc ${pct}%`)
+    stops.push(`hsla(${hue},65%,45%,0.80) ${pct}%`)
     // Fade out to transparent after the last point
     if (i === sorted.length - 1 && parseFloat(pct) < 97) {
-      stops.push(`${col}22 100%`)
+      stops.push(`hsla(${hue},65%,45%,0.08) 100%`)
     }
   })
 
@@ -211,7 +221,7 @@ export default function GreenhouseHeatmap({ rows = [] }) {
         {ROW_NUMBERS.map(rowNum => {
           const points = rowMap[rowNum] || []
           const hasData = points.length > 0
-          const gradient = hasData ? buildGradient(points, maxDist) : C.bg3
+          const gradient = C.bg1
 
           return (
             <div key={rowNum} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>

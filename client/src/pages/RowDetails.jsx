@@ -198,6 +198,7 @@ export default function RowDetails() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const [selectedTsIdx, setSelectedTsIdx] = useState(0)
   const [imageTab, setImageTab] = useState('tomatoes') // 'tomatoes' | 'flowers'
 
   // Delete modal state: null | 'row' | 'all'
@@ -244,6 +245,11 @@ export default function RowDetails() {
   const distances = data?.distances || []
   const selected = distances[selectedIdx] ?? null
 
+  // Active timestamp entry — falls back to top-level (latest) if all_timestamps absent
+  const allTs = selected?.all_timestamps ?? []
+  const activeTs = allTs[selectedTsIdx] ?? null
+  const activeData = activeTs ?? selected
+
   /* Row-level aggregate totals */
   const rowTotals = distances.reduce((acc, d) => {
     const bc = d.tomato_classification?.summary?.by_class || {}
@@ -256,15 +262,15 @@ export default function RowDetails() {
 
   const totalTomatoes = rowTotals.Ripe + rowTotals.Half_Ripe + rowTotals.Unripe
 
-  /* Selected point: images */
-  const originalImages        = selected ? toImgList(selected.images?.original,        'Original',  null,                           null)               : []
-  const tomatoAnnotatedImages = selected ? toImgList(selected.images?.tomato_annotated, 'Annotated', selected.tomato_classification, toTomatoDetections) : []
-  const flowerAnnotatedImages = selected ? toImgList(selected.images?.flower_annotated, 'Annotated', selected.flower_classification,  toFlowerDetections) : []
+  /* Selected point: images — from the active timestamp */
+  const originalImages        = activeData ? toImgList(activeData.images?.original,        'Original',  null,                              null)               : []
+  const tomatoAnnotatedImages = activeData ? toImgList(activeData.images?.tomato_annotated, 'Annotated', activeData.tomato_classification, toTomatoDetections) : []
+  const flowerAnnotatedImages = activeData ? toImgList(activeData.images?.flower_annotated, 'Annotated', activeData.flower_classification,  toFlowerDetections) : []
 
-  /* Selected point: counts */
-  const selTomato = selected?.tomato_classification?.summary?.by_class || {}
+  /* Selected point: counts — from the active timestamp */
+  const selTomato = activeData?.tomato_classification?.summary?.by_class || {}
   const selTotalT = (selTomato.Ripe || 0) + (selTomato.Half_Ripe || 0) + (selTomato.Unripe || 0)
-  const selFlower = selected?.flower_classification?.stage_counts || {}
+  const selFlower = activeData?.flower_classification?.stage_counts || {}
   const selTotalF = Object.values(selFlower).reduce((s, v) => s + (v || 0), 0)
 
   const card = { background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10 }
@@ -409,7 +415,7 @@ export default function RowDetails() {
           <RowVisualizer
             distances={distances}
             selectedIdx={selectedIdx}
-            onSelect={(i) => { setSelectedIdx(i); setImageTab('tomatoes') }}
+            onSelect={(i) => { setSelectedIdx(i); setSelectedTsIdx(0); setImageTab('tomatoes') }}
           />
 
           {/* ── Detail panel for selected point ── */}
@@ -437,10 +443,45 @@ export default function RowDetails() {
                       <div style={{ fontSize: 10, color: C.t3 }}>from row start</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: C.t3, marginTop: 6, paddingLeft: 0 }}>{formatTs(selected.latest_timestamp)}</div>
+                  {/* Timestamp selector */}
+                  {allTs.length > 1 ? (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>
+                        Captured
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {allTs.map((entry, i) => {
+                          const active = i === selectedTsIdx
+                          return (
+                            <button
+                              key={entry.timestamp}
+                              onClick={() => setSelectedTsIdx(i)}
+                              className="btn-press"
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                padding: '6px 10px', borderRadius: 6, fontSize: 11,
+                                background: active ? C.greenDim : 'transparent',
+                                border: `1px solid ${active ? C.green + '44' : C.border}`,
+                                color: active ? C.green : C.t2,
+                                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                                transition: 'background 0.1s ease, border-color 0.1s ease, color 0.1s ease',
+                              }}
+                            >
+                              <span className="num">{formatTs(entry.timestamp)}</span>
+                              {i === 0 && (
+                                <span style={{ fontSize: 9, fontWeight: 600, color: C.t3, marginLeft: 6, flexShrink: 0 }}>LATEST</span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: C.t3, marginTop: 6 }}>{formatTs(selected.latest_timestamp)}</div>
+                  )}
                 </div>
 
-                {selected.tomato_classification ? (
+                {activeData?.tomato_classification ? (
                   <>
                     {/* Tomatoes */}
                     <div>
@@ -477,7 +518,7 @@ export default function RowDetails() {
                     </div>
                   </>
                 ) : (
-                  <p style={{ fontSize: 12, color: C.t3 }}>Not yet classified</p>
+                  <p style={{ fontSize: 12, color: C.t3 }}>No classification data for this timestamp</p>
                 )}
               </div>
 

@@ -220,22 +220,38 @@ async def get_detailed_row_data(row: int = Query(..., description="Greenhouse ro
 
     for doc in sorted(docs, key=lambda d: d["distanceFromRowStart"]):
         timestamps: dict = doc.get("timestamps", {})
-        ts_key = _latest_ts_key(timestamps)
-        if ts_key is None:
+        latest_key = _latest_ts_key(timestamps)
+        if latest_key is None:
             continue
 
-        ts_entry = timestamps[ts_key]
+        latest_entry = timestamps[latest_key]
+
+        # Build all_timestamps sorted newest-first
+        all_timestamps = []
+        for ts_key in sorted(timestamps.keys(), reverse=True):
+            ts_entry = timestamps[ts_key]
+            all_timestamps.append({
+                "timestamp":             _key_to_ts(ts_key),
+                "tomato_classification": ts_entry.get("tomato_classification"),
+                "flower_classification": ts_entry.get("flower_classification"),
+                "images": {
+                    "original":         _image_urls(ts_entry.get("original_images", [])),
+                    "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
+                    "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+                },
+            })
 
         distance_entry = {
             "distanceFromRowStart":  doc["distanceFromRowStart"],
-            "latest_timestamp":      _key_to_ts(ts_key),
-            "tomato_classification": ts_entry.get("tomato_classification"),
-            "flower_classification": ts_entry.get("flower_classification"),
+            "latest_timestamp":      _key_to_ts(latest_key),
+            "tomato_classification": latest_entry.get("tomato_classification"),
+            "flower_classification": latest_entry.get("flower_classification"),
             "images": {
-                "original":         _image_urls(ts_entry.get("original_images", [])),
-                "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
-                "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+                "original":         _image_urls(latest_entry.get("original_images", [])),
+                "tomato_annotated": _image_urls(latest_entry.get("tomato_annotated_images", [])),
+                "flower_annotated": _image_urls(latest_entry.get("flower_annotated_images", [])),
             },
+            "all_timestamps": all_timestamps,
         }
         distances.append(distance_entry)
 
