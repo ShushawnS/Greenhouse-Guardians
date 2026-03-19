@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import ImageModal from './ImageModal'
+import AnnotatedImage from './AnnotatedImage'
+
+const IMG_CLASS = "h-48 w-auto rounded-lg border border-gray-200 object-cover shadow-sm group-hover:shadow-md group-hover:border-green-300 transition-[box-shadow,border-color] outline outline-1 -outline-offset-1 outline-black/[0.06]"
 
 export default function ImageGallery({ images = [], emptyMessage = 'No images available' }) {
   const [modalImage, setModalImage] = useState(null)
@@ -21,14 +24,16 @@ export default function ImageGallery({ images = [], emptyMessage = 'No images av
             className="flex-shrink-0 text-center cursor-pointer group"
             onClick={() => setModalImage(img)}
           >
-            <div className="relative">
-              <img
+            {/* inline-block so the hover overlay's inset-0 matches the image size */}
+            <div className="relative inline-block">
+              <AnnotatedImage
                 src={img.src}
                 alt={img.label || `Image ${i + 1}`}
-                className="h-48 w-auto rounded-lg border border-gray-200 object-cover shadow-sm group-hover:shadow-md group-hover:border-green-300 transition-[box-shadow,border-color] outline outline-1 -outline-offset-1 outline-black/[0.06]"
+                detections={img.detections || []}
+                imgClassName={IMG_CLASS}
               />
-              {/* Click hint overlay */}
-              <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+              {/* click hint overlay */}
+              <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
                 <svg
                   className="w-8 h-8 text-white opacity-0 group-hover:opacity-80 transition-opacity drop-shadow"
                   fill="none" stroke="currentColor" viewBox="0 0 24 24"

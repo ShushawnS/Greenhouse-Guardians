@@ -23,3 +23,13 @@ export const recomputeTrends = () => resultsApi.post('/recomputeTrends')
 export const getAllData = () => resultsApi.get('/getAllData')
 export const deleteData = (row) =>
   resultsApi.delete('/deleteData', { params: row != null ? { row } : {} })
+
+export const backfillFresh = ({ confidenceThreshold = 0.25, tomatoTrack = 'remote', flowerTrack = 'remote' } = {}) =>
+  uploadApi.post('/backfillFresh', null, {
+    params: {
+      confidence_threshold: confidenceThreshold,
+      tomato_track: tomatoTrack,
+      flower_track: flowerTrack,
+    },
+    timeout: 600000,
+  })

@@ -10,8 +10,6 @@ POST /classifyDirect – Classify immediately, return results + base64 images,
 """
 
 import asyncio
-import base64
-import io
 import logging
 import os
 import sys
@@ -115,31 +113,6 @@ async def _fetch_images_from_gridfs(file_ids: list) -> list[bytes]:
     return images
 
 
-async def _store_images_to_gridfs(
-    image_bytes_list: list[bytes],
-    image_type: str,
-    greenhouse_row: int,
-    distance: float,
-    timestamp: str,
-) -> list[str]:
-    bucket = get_gridfs_bucket()
-    file_ids = []
-    for idx, img_bytes in enumerate(image_bytes_list):
-        metadata = {
-            "greenhouse_row": greenhouse_row,
-            "distanceFromRowStart": distance,
-            "timestamp": timestamp,
-            "image_type": image_type,
-            "image_index": idx,
-        }
-        fid = await bucket.upload_from_stream(
-            f"{image_type}_{greenhouse_row}_{distance}_{timestamp}_{idx}.jpg",
-            io.BytesIO(img_bytes),
-            metadata=metadata,
-        )
-        file_ids.append(str(fid))
-    return file_ids
-
 
 async def _classify_and_save(
     document_id: str,
@@ -179,26 +152,10 @@ async def _classify_and_save(
     flower_result = gathered[1]
     depth_result: dict | None = gathered[2] if has_depth else None
 
-    tomato_ids, flower_ids = await asyncio.gather(
-        _store_images_to_gridfs(
-            tomato_result["annotated_image_bytes"],
-            "tomato_annotated", greenhouse_row, distance, timestamp,
-        ),
-        _store_images_to_gridfs(
-            flower_result["annotated_image_bytes"],
-            "flower_annotated", greenhouse_row, distance, timestamp,
-        ),
-    )
-
-    tomato_data = {k: v for k, v in tomato_result.items() if k != "annotated_image_bytes"}
-    flower_data = {k: v for k, v in flower_result.items() if k != "annotated_image_bytes"}
-
     ts_key = f"timestamps.{make_ts_key(timestamp)}"
     update_fields: dict = {
-        f"{ts_key}.tomato_classification":   tomato_data,
-        f"{ts_key}.flower_classification":   flower_data,
-        f"{ts_key}.tomato_annotated_images": tomato_ids,
-        f"{ts_key}.flower_annotated_images": flower_ids,
+        f"{ts_key}.tomato_classification": tomato_result,
+        f"{ts_key}.flower_classification": flower_result,
     }
     if depth_result is not None:
         update_fields[f"{ts_key}.depth_analysis"] = depth_result
@@ -209,11 +166,9 @@ async def _classify_and_save(
     )
 
     return {
-        "tomato_classification":     tomato_data,
-        "flower_classification":     flower_data,
-        "tomato_annotated_image_ids": tomato_ids,
-        "flower_annotated_image_ids": flower_ids,
-        "depth_analysis":            depth_result,
+        "tomato_classification": tomato_result,
+        "flower_classification": flower_result,
+        "depth_analysis":        depth_result,
     }
 
 
@@ -346,9 +301,6 @@ async def classify_direct(
         logger.error("classifyDirect failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
-    def to_b64(byte_list):
-        return [base64.b64encode(b).decode("utf-8") for b in byte_list]
-
     return {
         "tomato_classification": {
             "images": tomato_result["images"],
@@ -358,10 +310,6 @@ async def classify_direct(
             "images": flower_result["images"],
             "total_flowers": flower_result["total_flowers"],
             "stage_counts": flower_result["stage_counts"],
-        },
-        "annotated_images": {
-            "tomato": to_b64(tomato_result["annotated_image_bytes"]),
-            "flower": to_b64(flower_result["annotated_image_bytes"]),
         },
         "depth_analysis": depth_result,
         "timing_ms": {"tomato_model": t_ms, "flower_model": f_ms},

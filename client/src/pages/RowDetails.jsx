@@ -263,10 +263,11 @@ export default function RowDetails() {
 
   const totalTomatoes = rowTotals.Ripe + rowTotals.Half_Ripe + rowTotals.Unripe
 
-  /* Selected point: images — from the active timestamp */
-  const originalImages        = activeData ? toImgList(activeData.images?.original,        'Original',  null,                              null)               : []
-  const tomatoAnnotatedImages = activeData ? toImgList(activeData.images?.tomato_annotated, 'Annotated', activeData.tomato_classification, toTomatoDetections) : []
-  const flowerAnnotatedImages = activeData ? toImgList(activeData.images?.flower_annotated, 'Annotated', activeData.flower_classification,  toFlowerDetections) : []
+  /* Selected point: images — original plain + original with detections for active tab */
+  const originalImages  = activeData ? toImgList(activeData.images?.original, 'Original', null, null) : []
+  const activeClassification = imageTab === 'tomatoes' ? activeData?.tomato_classification : activeData?.flower_classification
+  const activeDetectionsFn   = imageTab === 'tomatoes' ? toTomatoDetections : toFlowerDetections
+  const annotatedImages = activeData ? toImgList(activeData.images?.original, 'Annotated', activeClassification, activeDetectionsFn) : []
 
   const depthAnalysis = activeData?.depth_analysis ?? null
 
@@ -562,10 +563,19 @@ export default function RowDetails() {
                     )}
                     <div>
                       <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
-                      <ImageGallery
-                        images={imageTab === 'tomatoes' ? tomatoAnnotatedImages : flowerAnnotatedImages}
-                        emptyMessage="No annotated images"
-                      />
+                      {activeClassification
+                        ? <ImageGallery images={annotatedImages} emptyMessage="No annotated images" />
+                        : (
+                          <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            height: 192, borderRadius: 8,
+                            border: `1px dashed ${C.border2}`,
+                            background: C.bg2,
+                          }}>
+                            <span style={{ fontSize: 12, color: C.t3, fontStyle: 'italic' }}>Classification on-going…</span>
+                          </div>
+                        )
+                      }
                     </div>
                   </div>
 

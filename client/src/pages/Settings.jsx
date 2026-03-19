@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useSettings } from '../context/SettingsContext'
 import { useNavigate } from 'react-router-dom'
 import { C } from '../tokens'
 import { saveGreenhouseConfig } from '../hooks/useGreenhouseConfig'
+import { backfillFresh } from '../api'
 
 /* ── Track selector (Remote / Local) ── */
 function TrackSelector({ value, onChange }) {
@@ -118,6 +120,8 @@ function SettingRow({ label, description, control }) {
 export default function Settings() {
   const { settings, updateSettings, resetSettings, DEFAULTS } = useSettings()
   const navigate = useNavigate()
+  const [backfillState, setBackfillState] = useState('idle') // idle | confirm | running | done | error
+  const [backfillResult, setBackfillResult] = useState(null)
 
   const isDirty =
     settings.confidenceThreshold !== DEFAULTS.confidenceThreshold ||
@@ -242,6 +246,99 @@ export default function Settings() {
               value={settings.autoRefresh}
               onChange={val => updateSettings({ autoRefresh: val })}
             />
+          }
+        />
+      </Section>
+
+      {/* Data */}
+      <Section
+        title="Data"
+        subtitle="Database management and sample data"
+      >
+        <SettingRow
+          label="Backfill DB Fresh"
+          description={
+            backfillState === 'done' && backfillResult
+              ? `Done — ${backfillResult.succeeded}/${backfillResult.total} images classified. week0 = 5 weeks ago, week1 = 4 weeks ago, week2 = 3 weeks ago.`
+              : backfillState === 'error' && backfillResult
+              ? `Error: ${backfillResult}`
+              : 'Clear all data and re-classify every image in server/images/flower/ using timestamps relative to today. Uses your current inference track settings.'
+          }
+          control={
+            backfillState === 'idle' && (
+              <button
+                onClick={() => setBackfillState('confirm')}
+                style={{
+                  padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                  border: `1px solid ${C.border2}`,
+                  background: C.bg2, color: C.t2,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Backfill DB Fresh
+              </button>
+            ) || backfillState === 'confirm' && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setBackfillState('idle')}
+                  style={{
+                    padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                    border: `1px solid ${C.border}`, background: C.bg2, color: C.t3,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setBackfillState('running')
+                    try {
+                      const res = await backfillFresh({
+                        confidenceThreshold: settings.confidenceThreshold,
+                        tomatoTrack: settings.tomatoTrack,
+                        flowerTrack: settings.flowerTrack,
+                      })
+                      setBackfillResult(res.data)
+                      setBackfillState('done')
+                    } catch (err) {
+                      setBackfillResult(err?.response?.data?.detail || err.message || 'Unknown error')
+                      setBackfillState('error')
+                    }
+                  }}
+                  style={{
+                    padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 600,
+                    border: `1px solid ${C.unripe}`, background: C.unripeDim, color: C.unripe,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Yes, clear & backfill
+                </button>
+              </div>
+            ) || backfillState === 'running' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.t3, fontSize: 12 }}>
+                <span style={{
+                  width: 14, height: 14, borderRadius: '50%',
+                  border: `2px solid ${C.border2}`,
+                  borderTopColor: C.green,
+                  display: 'inline-block',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                Classifying…
+              </div>
+            ) || (backfillState === 'done' || backfillState === 'error') && (
+              <button
+                onClick={() => { setBackfillState('idle'); setBackfillResult(null) }}
+                style={{
+                  padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                  border: `1px solid ${C.border}`, background: C.bg2, color: C.t2,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                Reset
+              </button>
+            )
           }
         />
       </Section>

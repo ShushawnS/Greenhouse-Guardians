@@ -10,7 +10,6 @@ classify_depth()       – Stub; raises NotImplementedError (future work).
 """
 
 import asyncio
-import base64
 import io
 import logging
 import math
@@ -47,19 +46,6 @@ logger = logging.getLogger("classifier")
 # ---------------------------------------------------------------------------
 tomato_model: YOLO | None = None
 flower_model: YOLO | None = None
-
-# Bounding-box colors (BGR for OpenCV)
-_TOMATO_COLORS: dict[str, tuple[int, int, int]] = {
-    "Ripe":      (0, 200,   0),   # green
-    "Half_Ripe": (0, 200, 255),   # yellow
-    "Unripe":    (0,   0, 220),   # red
-}
-
-_FLOWER_COLORS: dict[int, tuple[int, int, int]] = {
-    0: (255, 100,   0),   # blue
-    1: (255,   0, 150),   # purple-pink
-    2: (0,   180, 255),   # orange
-}
 
 
 # ---------------------------------------------------------------------------
@@ -121,36 +107,6 @@ def _decode_image(image_bytes: bytes) -> np.ndarray:
     return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
-def _encode_image(img: np.ndarray) -> bytes:
-    """Encode OpenCV BGR ndarray → JPEG bytes."""
-    _, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    return buf.tobytes()
-
-
-def _draw_box(
-    img: np.ndarray,
-    x1: float, y1: float, x2: float, y2: float,
-    color: tuple[int, int, int],
-    label: str,
-) -> None:
-    """Draw a filled-background label + bounding box on img (in-place)."""
-    pt1 = (int(x1), int(y1))
-    pt2 = (int(x2), int(y2))
-    cv2.rectangle(img, pt1, pt2, color, 2)
-
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    thickness = 1
-    (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
-
-    text_y = max(int(y1) - 6, th + 4)
-    bg_pt1 = (int(x1), text_y - th - 2)
-    bg_pt2 = (int(x1) + tw + 2, text_y + baseline)
-    cv2.rectangle(img, bg_pt1, bg_pt2, color, cv2.FILLED)
-
-    text_color = (0, 0, 0) if sum(color) > 400 else (255, 255, 255)
-    cv2.putText(img, label, (int(x1) + 1, text_y), font, font_scale, text_color, thickness)
-
 
 # ---------------------------------------------------------------------------
 # Sync inference implementations (run in thread-pool executor)
@@ -161,7 +117,6 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
         raise RuntimeError("Tomato model not loaded — call load_models() first.")
 
     per_image: list[dict] = []
-    annotated: list[bytes] = []
     agg_by_class: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
 
     for idx, img_bytes in enumerate(image_bytes_list):
@@ -189,9 +144,6 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
                 img_by_class[label] = img_by_class.get(label, 0) + 1
                 agg_by_class[label] = agg_by_class.get(label, 0) + 1
 
-                color = _TOMATO_COLORS.get(label, (200, 200, 200))
-                _draw_box(img, x1, y1, x2, y2, color, f"{label} {confidence:.2f}")
-
         per_image.append({
             "image_index": idx,
             "detections": img_detections,
@@ -200,7 +152,6 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
                 "by_class": img_by_class,
             },
         })
-        annotated.append(_encode_image(img))
 
     return {
         "images": per_image,
@@ -208,7 +159,6 @@ def _run_tomato_inference(image_bytes_list: list[bytes], conf_threshold: float =
             "total": sum(len(p["detections"]) for p in per_image),
             "by_class": agg_by_class,
         },
-        "annotated_image_bytes": annotated,
     }
 
 
@@ -217,7 +167,6 @@ def _run_flower_inference(image_bytes_list: list[bytes], conf_threshold: float =
         raise RuntimeError("Flower model not loaded — call load_models() first.")
 
     per_image: list[dict] = []
-    annotated: list[bytes] = []
     agg_stage_counts: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
     for idx, img_bytes in enumerate(image_bytes_list):
@@ -244,23 +193,17 @@ def _run_flower_inference(image_bytes_list: list[bytes], conf_threshold: float =
                 img_stage_counts[key] = img_stage_counts.get(key, 0) + 1
                 agg_stage_counts[key] = agg_stage_counts.get(key, 0) + 1
 
-                color = _FLOWER_COLORS.get(stage, (200, 200, 200))
-                stage_name = FLOWER_CLASSES.get(stage, f"stage_{stage}")
-                _draw_box(img, x1, y1, x2, y2, color, f"{stage_name} {confidence:.2f}")
-
         per_image.append({
             "image_index": idx,
             "flowers": img_flowers,
             "total_flowers": len(img_flowers),
             "stage_counts": img_stage_counts,
         })
-        annotated.append(_encode_image(img))
 
     return {
         "images": per_image,
         "total_flowers": sum(p["total_flowers"] for p in per_image),
         "stage_counts": agg_stage_counts,
-        "annotated_image_bytes": annotated,
     }
 
 
@@ -406,7 +349,6 @@ async def classify_tomatoes_remote(
     responses = await asyncio.gather(*tasks)
 
     per_image: list[dict] = []
-    annotated: list[bytes] = []
     agg_by_class: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
 
     for idx, resp in enumerate(responses):
@@ -425,9 +367,6 @@ async def classify_tomatoes_remote(
             "summary": {"total": len(detections), "by_class": by_class},
         })
 
-        b64_str = resp.get("annotated_image_b64", resp.get("annotated_image", ""))
-        annotated.append(base64.b64decode(b64_str) if b64_str else b"")
-
     total = sum(len(p["detections"]) for p in per_image)
     logger.info(
         "━━ REMOTE TOMATOES ━━  %d image(s)  |  %d detected  "
@@ -445,7 +384,6 @@ async def classify_tomatoes_remote(
     return {
         "images": per_image,
         "summary": {"total": total, "by_class": agg_by_class},
-        "annotated_image_bytes": annotated,
     }
 
 
@@ -469,7 +407,6 @@ async def classify_flowers_remote(
     responses = await asyncio.gather(*tasks)
 
     per_image: list[dict] = []
-    annotated: list[bytes] = []
     agg_stage_counts: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
     for idx, resp in enumerate(responses):
@@ -516,9 +453,6 @@ async def classify_flowers_remote(
             "stage_counts": stage_counts,
         })
 
-        b64_str = resp.get("annotated_image_b64", resp.get("annotated_image", ""))
-        annotated.append(base64.b64decode(b64_str) if b64_str else b"")
-
     total_flowers = sum(p["total_flowers"] for p in per_image)
     logger.info(
         "━━ REMOTE FLOWERS  ━━  %d image(s)  |  %d detected  "
@@ -537,7 +471,6 @@ async def classify_flowers_remote(
         "images": per_image,
         "total_flowers": total_flowers,
         "stage_counts": agg_stage_counts,
-        "annotated_image_bytes": annotated,
     }
 
 

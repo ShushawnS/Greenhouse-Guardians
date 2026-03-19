@@ -256,9 +256,7 @@ async def get_detailed_row_data(row: int = Query(..., description="Greenhouse ro
                 "flower_classification": ts_entry.get("flower_classification"),
                 "depth_analysis":        ts_entry.get("depth_analysis"),
                 "images": {
-                    "original":         _image_urls(ts_entry.get("original_images", [])),
-                    "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
-                    "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+                    "original": _image_urls(ts_entry.get("original_images", [])),
                 },
             })
 
@@ -269,9 +267,7 @@ async def get_detailed_row_data(row: int = Query(..., description="Greenhouse ro
             "flower_classification": latest_entry.get("flower_classification"),
             "depth_analysis":        latest_entry.get("depth_analysis"),
             "images": {
-                "original":         _image_urls(latest_entry.get("original_images", [])),
-                "tomato_annotated": _image_urls(latest_entry.get("tomato_annotated_images", [])),
-                "flower_annotated": _image_urls(latest_entry.get("flower_annotated_images", [])),
+                "original": _image_urls(latest_entry.get("original_images", [])),
             },
             "all_timestamps": all_timestamps,
         }
@@ -318,9 +314,7 @@ async def get_all_data():
                 "tomato_classification": ts_entry.get("tomato_classification"),
                 "flower_classification": ts_entry.get("flower_classification"),
                 "images": {
-                    "original":         _image_urls(ts_entry.get("original_images", [])),
-                    "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
-                    "flower_annotated": _image_urls(ts_entry.get("flower_annotated_images", [])),
+                    "original": _image_urls(ts_entry.get("original_images", [])),
                 },
             })
         result.append({

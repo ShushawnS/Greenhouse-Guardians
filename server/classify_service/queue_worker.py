@@ -16,7 +16,6 @@ Enqueue a job:
 """
 
 import asyncio
-import io
 import logging
 import os
 import sys
@@ -26,7 +25,7 @@ from bson import ObjectId
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import make_ts_key
-from shared.db import get_db, get_gridfs_bucket
+from shared.db import get_db
 from shared.trends import update_daily_trend
 
 # imported lazily at worker start to avoid circular-import issues
@@ -75,32 +74,6 @@ async def _fetch_images_from_gridfs(file_ids: list) -> list[bytes]:
         images.append(data)
     return images
 
-
-async def _store_images_to_gridfs(
-    image_bytes_list: list[bytes],
-    image_type: str,
-    greenhouse_row: int,
-    distance_from_row_start: float,
-    timestamp: str,
-) -> list[ObjectId]:
-    """Upload annotated images to GridFS and return their file IDs."""
-    bucket = get_gridfs_bucket()
-    file_ids = []
-    for idx, img_bytes in enumerate(image_bytes_list):
-        metadata = {
-            "greenhouse_row": greenhouse_row,
-            "distanceFromRowStart": distance_from_row_start,
-            "timestamp": timestamp,
-            "image_type": image_type,
-            "image_index": idx,
-        }
-        file_id = await bucket.upload_from_stream(
-            f"{image_type}_{greenhouse_row}_{distance_from_row_start}_{timestamp}_{idx}.jpg",
-            io.BytesIO(img_bytes),
-            metadata=metadata,
-        )
-        file_ids.append(file_id)
-    return file_ids
 
 
 # ---------------------------------------------------------------------------
@@ -164,31 +137,11 @@ async def _process_job(job: dict) -> None:
         flower_result = gathered[1]
         depth_result: dict | None = gathered[2] if has_depth else None
 
-        # Store annotated images to GridFS
-        tomato_ids, flower_ids = await asyncio.gather(
-            _store_images_to_gridfs(
-                tomato_result["annotated_image_bytes"],
-                "tomato_annotated",
-                greenhouse_row, distance, timestamp,
-            ),
-            _store_images_to_gridfs(
-                flower_result["annotated_image_bytes"],
-                "flower_annotated",
-                greenhouse_row, distance, timestamp,
-            ),
-        )
-
-        # Remove raw bytes before storing classification data
-        tomato_data = {k: v for k, v in tomato_result.items() if k != "annotated_image_bytes"}
-        flower_data = {k: v for k, v in flower_result.items() if k != "annotated_image_bytes"}
-
         # Update MongoDB document
         ts_key = f"timestamps.{make_ts_key(timestamp)}"
         update_fields: dict = {
-            f"{ts_key}.tomato_classification":    tomato_data,
-            f"{ts_key}.flower_classification":    flower_data,
-            f"{ts_key}.tomato_annotated_images":  [str(fid) for fid in tomato_ids],
-            f"{ts_key}.flower_annotated_images":  [str(fid) for fid in flower_ids],
+            f"{ts_key}.tomato_classification": tomato_result,
+            f"{ts_key}.flower_classification": flower_result,
         }
         if depth_result is not None:
             update_fields[f"{ts_key}.depth_analysis"] = depth_result
@@ -204,8 +157,8 @@ async def _process_job(job: dict) -> None:
         logger.info(
             "Job complete: doc_id=%s ts=%s | tomatoes=%d flowers=%d depth=%s",
             doc_id_str, timestamp,
-            tomato_data["summary"]["total"],
-            flower_data["total_flowers"],
+            tomato_result["summary"]["total"],
+            flower_result["total_flowers"],
             f"{depth_result['total']} detected" if depth_result else "skipped",
         )
 

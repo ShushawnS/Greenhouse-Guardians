@@ -12,18 +12,22 @@ import asyncio
 import io
 import logging
 import os
+import re
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 from bson import ObjectId
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import ReturnDocument
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import CLASSIFY_SERVICE_URL, CORS_ORIGINS, make_ts_key
 from shared.db import close_db, get_db, get_gridfs_bucket, ping_db
+from shared.trends import recompute_all_trends
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("upload_service")
@@ -143,8 +147,6 @@ async def _create_timestamp_entry(
         {"$set": {
             f"timestamps.{make_ts_key(timestamp)}": {
                 "original_images":          original_image_ids,
-                "tomato_annotated_images":  [],
-                "flower_annotated_images":  [],
                 "depth_images":             depth_image_ids or [],
                 "depth_intrinsics":         depth_intrinsics,
                 "tomato_classification":    None,
@@ -341,16 +343,14 @@ async def upload_classify(
                 doc_id, timestamp, attempt + 1,
             )
             return {
-                "status":                    "complete",
-                "document_id":               str(doc_id),
-                "timestamp":                 timestamp,
-                "original_image_ids":        file_ids,
-                "tomato_annotated_ids":      ts_entry.get("tomato_annotated_images", []),
-                "flower_annotated_ids":      ts_entry.get("flower_annotated_images", []),
-                "tomato_classification":     ts_entry["tomato_classification"],
-                "flower_classification":     ts_entry["flower_classification"],
-                "depth_analysis":            ts_entry.get("depth_analysis"),
-                "depth_enabled":             ts_entry.get("depth_analysis") is not None,
+                "status":                "complete",
+                "document_id":          str(doc_id),
+                "timestamp":            timestamp,
+                "original_image_ids":   file_ids,
+                "tomato_classification": ts_entry["tomato_classification"],
+                "flower_classification": ts_entry["flower_classification"],
+                "depth_analysis":       ts_entry.get("depth_analysis"),
+                "depth_enabled":        ts_entry.get("depth_analysis") is not None,
             }
 
     raise HTTPException(
@@ -429,6 +429,184 @@ async def demo_classify(
         raise HTTPException(status_code=502, detail=f"Could not reach Classify Service: {exc}") from exc
 
     return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# /backfillFresh
+# ---------------------------------------------------------------------------
+
+# Directory containing sample images: server/images/{flower,tomato}/weekN/rowM/Xm.jpg
+_IMAGES_DIR = Path(__file__).parent.parent / "images"
+
+# week0 = 4 weeks before now, week1 = 3 weeks before, etc.; week4 = this week
+_WEEK_OFFSET_WEEKS = {0: 4, 1: 3, 2: 2, 3: 1, 4: 0}
+
+
+def _week_timestamp(week_num: int) -> str:
+    """Return an ISO timestamp for weekN at noon UTC."""
+    now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+    offset = _WEEK_OFFSET_WEEKS.get(week_num, week_num)
+    ts = now - timedelta(weeks=offset)
+    return ts.strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+
+async def _classify_one(
+    week_num: int,
+    row: int,
+    distance: float,
+    image_path: Path,
+    confidence_threshold: float,
+    tomato_track: str,
+    flower_track: str,
+    sem: asyncio.Semaphore,
+) -> dict:
+    """Store one image to GridFS, create/update the row_data doc, and classify."""
+    async with sem:
+        timestamp = _week_timestamp(week_num)
+        ts_key = make_ts_key(timestamp)
+
+        # Read image bytes from disk
+        image_bytes = image_path.read_bytes()
+        filename = image_path.name
+
+        # Build a fake UploadFile-like object using _store_images_to_gridfs directly
+        bucket = get_gridfs_bucket()
+        metadata = {
+            "greenhouse_row": row,
+            "distanceFromRowStart": distance,
+            "timestamp": timestamp,
+            "image_type": "original",
+            "image_index": 0,
+        }
+        fid = await bucket.upload_from_stream(
+            f"original_{row}_{distance}_{ts_key}_0_{filename}",
+            io.BytesIO(image_bytes),
+            metadata=metadata,
+        )
+        file_ids = [str(fid)]
+
+        # Find or create row_data document
+        doc = await _find_or_create_row_doc(row, distance)
+        doc_id: ObjectId = doc["_id"]
+
+        # Create timestamp entry
+        await _create_timestamp_entry(doc_id, timestamp, file_ids)
+
+        # Trigger immediate classification
+        classify_payload = {
+            "document_id":          str(doc_id),
+            "greenhouse_row":       row,
+            "distanceFromRowStart": distance,
+            "timestamp":            timestamp,
+            "confidence_threshold": confidence_threshold,
+            "tomato_track":         tomato_track,
+            "flower_track":         flower_track,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                resp = await client.post(
+                    f"{CLASSIFY_SERVICE_URL}/classifyNow",
+                    json=classify_payload,
+                )
+                resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("classifyNow failed for row=%s dist=%s week=%s: %s", row, distance, week_num, exc)
+            return {"ok": False, "row": row, "distance": distance, "week": week_num, "error": str(exc)}
+
+        logger.info("backfill ok: week=%s row=%s dist=%s", week_num, row, distance)
+        return {"ok": True, "row": row, "distance": distance, "week": week_num}
+
+
+@app.post("/backfillFresh")
+async def backfill_fresh(
+    confidence_threshold: float = Query(0.25),
+    tomato_track: str = Query("remote"),
+    flower_track: str = Query("remote"),
+):
+    """
+    Clear all row_data, daily_trends, and GridFS images, then re-classify every
+    image in server/images/ (flower/ and tomato/ subdirectories) using timestamps
+    derived from the current date:
+      week0 → now - 4 weeks (noon UTC)
+      week1 → now - 3 weeks
+      week2 → now - 2 weeks
+      week3 → now - 1 week
+      week4 → now (this week)
+    Folder names encode row (rowN) and filenames encode distance (Xm.jpg).
+    At most 5 classifications run concurrently.
+    """
+    if not _IMAGES_DIR.exists():
+        raise HTTPException(status_code=500, detail=f"Images directory not found: {_IMAGES_DIR}")
+
+    db = get_db()
+
+    # 1. Clear all data
+    await db["row_data"].delete_many({})
+    await db["daily_trends"].delete_many({})
+    await db["images.files"].delete_many({})
+    await db["images.chunks"].delete_many({})
+    logger.info("backfillFresh: DB cleared")
+
+    # 2. Collect all image jobs
+    jobs: list[tuple[int, int, float, Path]] = []
+    week_dir_re = re.compile(r"^week(\d+)$")
+    row_dir_re = re.compile(r"^row(\d+)$")
+    dist_file_re = re.compile(r"^(\d+(?:\.\d+)?)m\.jpg$", re.IGNORECASE)
+
+    cat_dir_re = re.compile(r"^(flower|tomato)$")
+
+    for cat_dir in sorted(_IMAGES_DIR.iterdir()):
+        if not cat_dir.is_dir() or not cat_dir_re.match(cat_dir.name):
+            continue
+        for week_dir in sorted(cat_dir.iterdir()):
+            m = week_dir_re.match(week_dir.name)
+            if not m or not week_dir.is_dir():
+                continue
+            week_num = int(m.group(1))
+
+            for row_dir in sorted(week_dir.iterdir()):
+                rm = row_dir_re.match(row_dir.name)
+                if not rm or not row_dir.is_dir():
+                    continue
+                row = int(rm.group(1))
+
+                for img_file in sorted(row_dir.iterdir()):
+                    fm = dist_file_re.match(img_file.name)
+                    if not fm:
+                        continue
+                    distance = float(fm.group(1))
+                    jobs.append((week_num, row, distance, img_file))
+
+    if not jobs:
+        raise HTTPException(status_code=404, detail="No images found in images/")
+
+    logger.info("backfillFresh: %d images to process", len(jobs))
+
+    # 3. Run classifications with max 5 concurrent
+    sem = asyncio.Semaphore(5)
+    results = await asyncio.gather(*[
+        _classify_one(week_num, row, distance, img_path,
+                      confidence_threshold, tomato_track, flower_track, sem)
+        for week_num, row, distance, img_path in jobs
+    ])
+
+    # 4. Recompute daily_trends from fresh data
+    try:
+        await recompute_all_trends()
+    except Exception as exc:
+        logger.warning("Trend recompute failed after backfill: %s", exc)
+
+    succeeded = sum(1 for r in results if r["ok"])
+    failed = len(results) - succeeded
+    logger.info("backfillFresh complete: %d ok, %d failed", succeeded, failed)
+
+    return {
+        "status":    "complete",
+        "total":     len(results),
+        "succeeded": succeeded,
+        "failed":    failed,
+        "errors":    [r for r in results if not r["ok"]],
+    }
 
 
 # ---------------------------------------------------------------------------

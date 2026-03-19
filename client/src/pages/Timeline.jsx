@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { getAllData, API_BASE } from '../api/index.js'
 import { C, TOMATO_COLORS, FLOWER_COLORS } from '../tokens'
 import ImageModal from '../components/ImageModal'
+import AnnotatedImage from '../components/AnnotatedImage'
 import StatCard from '../components/StatCard'
 import { useSettings } from '../context/SettingsContext'
 
@@ -94,41 +95,44 @@ function StatRow({ label, count, total, color }) {
 }
 
 /* ── clickable image thumbnail ── */
-function Thumb({ src, label, onClick }) {
+function Thumb({ src, label, onClick, detections = [] }) {
   const [hovered, setHovered] = useState(false)
+  const imgStyle = {
+    height: 110, width: 'auto', borderRadius: 7,
+    border: `1.5px solid ${hovered ? C.green : C.border}`,
+    objectFit: 'cover', display: 'block',
+    transition: 'border-color 0.15s',
+    boxShadow: hovered ? `0 2px 12px ${C.green}33` : 'none',
+  }
   return (
     <div
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ flexShrink: 0, cursor: 'pointer', position: 'relative' }}
+      style={{ flexShrink: 0, cursor: 'pointer' }}
     >
-      <img
-        src={imgSrc(src)}
-        alt={label}
-        style={{
-          height: 110, width: 'auto', borderRadius: 7,
-          border: `1.5px solid ${hovered ? C.green : C.border}`,
-          objectFit: 'cover', display: 'block',
-          transition: 'border-color 0.15s',
-          boxShadow: hovered ? `0 2px 12px ${C.green}33` : 'none',
-        }}
-        onError={e => { e.target.style.display = 'none' }}
-      />
-      {/* hover overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, borderRadius: 7,
-        background: hovered ? 'rgba(0,0,0,0.18)' : 'transparent',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'background 0.15s',
-        pointerEvents: 'none',
-      }}>
-        {hovered && (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            <line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
-          </svg>
-        )}
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <AnnotatedImage
+          src={imgSrc(src)}
+          alt={label}
+          detections={detections}
+          imgStyle={imgStyle}
+        />
+        {/* hover overlay */}
+        <div style={{
+          position: 'absolute', inset: 0, borderRadius: 7,
+          background: hovered ? 'rgba(0,0,0,0.18)' : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.15s',
+          pointerEvents: 'none',
+        }}>
+          {hovered && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          )}
+        </div>
       </div>
       <p style={{ fontSize: 10, color: C.t3, marginTop: 4, textAlign: 'center' }}>{label}</p>
     </div>
@@ -169,11 +173,7 @@ function TimelineEntry({ entry, isNew }) {
     }))
   }
 
-  const imgCount = Math.max(
-    entry.images?.original?.length ?? 0,
-    entry.images?.tomato_annotated?.length ?? 0,
-    entry.images?.flower_annotated?.length ?? 0,
-  )
+  const imgCount = entry.images?.original?.length ?? 0
   const hasImages = imgCount > 0
 
   function openModal(src, label, detections) {
@@ -299,9 +299,8 @@ function TimelineEntry({ entry, isNew }) {
               {showImages && (
                 <div className="img-reveal" style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', gap: 16 }}>
                   {Array.from({ length: imgCount }, (_, i) => {
-                    const origPath    = entry.images.original?.[i]
-                    const tomatoPath  = entry.images.tomato_annotated?.[i]
-                    const flowerPath  = entry.images.flower_annotated?.[i]
+                    const origPath = entry.images.original?.[i]
+                    if (!origPath) return null
 
                     return (
                       <div key={i}>
@@ -312,27 +311,18 @@ function TimelineEntry({ entry, isNew }) {
                           }}>Image {i + 1}</p>
                         )}
                         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
-                          {origPath && (
-                            <Thumb
-                              src={origPath}
-                              label="Original"
-                              onClick={() => openModal(origPath, `Original · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, [])}
-                            />
-                          )}
-                          {tomatoPath && (
-                            <Thumb
-                              src={tomatoPath}
-                              label="Tomato Detection"
-                              onClick={() => openModal(tomatoPath, `Tomato Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, tomatoDetectionsForImage(i))}
-                            />
-                          )}
-                          {flowerPath && (
-                            <Thumb
-                              src={flowerPath}
-                              label="Flower Detection"
-                              onClick={() => openModal(flowerPath, `Flower Detection · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, flowerDetectionsForImage(i))}
-                            />
-                          )}
+                          <Thumb
+                            src={origPath}
+                            label="Tomato Detection"
+                            detections={tomatoDetectionsForImage(i)}
+                            onClick={() => openModal(origPath, `Tomato · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, tomatoDetectionsForImage(i))}
+                          />
+                          <Thumb
+                            src={origPath}
+                            label="Flower Detection"
+                            detections={flowerDetectionsForImage(i)}
+                            onClick={() => openModal(origPath, `Flower · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, flowerDetectionsForImage(i))}
+                          />
                         </div>
                       </div>
                     )
