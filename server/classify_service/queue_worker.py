@@ -25,7 +25,7 @@ from bson import ObjectId
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.config import make_ts_key
-from shared.db import get_db
+from shared.db import get_db, get_gridfs_bucket
 from shared.trends import update_daily_trend
 
 # imported lazily at worker start to avoid circular-import issues
