@@ -3,6 +3,46 @@ import { useNavigate } from 'react-router-dom'
 import { C } from '../tokens'
 import { saveGreenhouseConfig } from '../hooks/useGreenhouseConfig'
 
+/* ── Track selector (Remote / Local) ── */
+function TrackSelector({ value, onChange }) {
+  return (
+    <div style={{
+      display: 'flex',
+      background: C.bg2,
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      padding: 3,
+      gap: 2,
+    }}>
+      {['remote', 'local'].map(track => {
+        const active = value === track
+        return (
+          <button
+            key={track}
+            onClick={() => onChange(track)}
+            style={{
+              padding: '5px 16px',
+              borderRadius: 6,
+              border: 'none',
+              background: active ? C.green : 'transparent',
+              boxShadow: active ? '0 1px 2px rgba(0,0,0,0.12)' : 'none',
+              color: active ? '#fff' : C.t3,
+              fontWeight: active ? 500 : 400,
+              fontSize: 12,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+              textTransform: 'capitalize',
+            }}
+          >
+            {track}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 /* ── Toggle switch ── */
 function Toggle({ value, onChange }) {
   return (
@@ -81,7 +121,9 @@ export default function Settings() {
 
   const isDirty =
     settings.confidenceThreshold !== DEFAULTS.confidenceThreshold ||
-    settings.autoRefresh !== DEFAULTS.autoRefresh
+    settings.autoRefresh !== DEFAULTS.autoRefresh ||
+    settings.tomatoTrack !== DEFAULTS.tomatoTrack ||
+    settings.flowerTrack !== DEFAULTS.flowerTrack
 
   return (
     <div
@@ -157,6 +199,34 @@ export default function Settings() {
             )
           })}
         </div>
+
+        <div style={{ borderTop: `1px solid ${C.border}`, margin: '20px 0' }} />
+
+        {[
+          {
+            key: 'tomatoTrack',
+            label: 'Tomato Model Track',
+            description: 'Remote uses the hosted HF Space inference API. Local runs the YOLOv8 model directly on this server.',
+          },
+          {
+            key: 'flowerTrack',
+            label: 'Flower Model Track',
+            description: 'Remote uses the hosted HF Space inference API. Local runs the YOLOv8 model directly on this server.',
+          },
+        ].map(({ key, label, description }) => (
+          <div key={key} style={{ marginTop: key === 'tomatoTrack' ? 0 : 16 }}>
+            <SettingRow
+              label={label}
+              description={description}
+              control={
+                <TrackSelector
+                  value={settings[key]}
+                  onChange={val => updateSettings({ [key]: val })}
+                />
+              }
+            />
+          </div>
+        ))}
       </Section>
 
       {/* Display */}

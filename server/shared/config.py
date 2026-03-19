@@ -20,6 +20,10 @@ INFERENCE_SERVICE_URL = os.getenv(
     "https://deenp03-guardians-of-the-greenhouse-inference.hf.space",
 )
 
+# ML inference track selection per model: "remote" (HF Space) or "local" (YOLOv8)
+TOMATO_INFERENCE_TRACK = os.getenv("TOMATO_INFERENCE_TRACK", "remote")
+FLOWER_INFERENCE_TRACK = os.getenv("FLOWER_INFERENCE_TRACK", "remote")
+
 # Model paths (local cache)
 MODELS_DIR = os.getenv(
     "MODELS_DIR",

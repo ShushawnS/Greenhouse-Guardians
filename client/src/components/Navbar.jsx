@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { C } from '../tokens'
 
 const GearIcon = () => (
@@ -25,6 +25,17 @@ const links = [
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  function handleGearClick(e) {
+    e.preventDefault()
+    if (location.pathname === '/settings') {
+      navigate(-1)
+    } else {
+      navigate('/settings')
+    }
+  }
 
   return (
     <nav style={{
@@ -76,23 +87,30 @@ export default function Navbar() {
         {/* Right column — gear icon + hamburger */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
           {/* Gear icon — settings, desktop only */}
-          <NavLink
-            to="/settings"
-            className="nav-links-wrap"
-            style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 32, height: 32, borderRadius: 7,
-              color: isActive ? C.green : C.t3,
-              background: isActive ? C.greenDim : 'transparent',
-              border: `1px solid ${isActive ? C.green + '44' : 'transparent'}`,
-              textDecoration: 'none',
-              transition: 'color 0.14s ease, background 0.14s ease, border-color 0.14s ease',
-              flexShrink: 0,
-            })}
-            title="Settings"
-          >
-            <GearIcon />
-          </NavLink>
+          {(() => {
+            const isActive = location.pathname === '/settings'
+            return (
+              <a
+                href="/settings"
+                onClick={handleGearClick}
+                className="nav-links-wrap"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 7,
+                  color: isActive ? C.green : C.t3,
+                  background: isActive ? C.greenDim : 'transparent',
+                  border: `1px solid ${isActive ? C.green + '44' : 'transparent'}`,
+                  textDecoration: 'none',
+                  transition: 'color 0.14s ease, background 0.14s ease, border-color 0.14s ease',
+                  flexShrink: 0,
+                  cursor: 'pointer',
+                }}
+                title={isActive ? 'Back' : 'Settings'}
+              >
+                <GearIcon />
+              </a>
+            )
+          })()}
 
           {/* Hamburger — mobile only */}
           <button

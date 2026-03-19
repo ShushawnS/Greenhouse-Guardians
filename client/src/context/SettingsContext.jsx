@@ -3,6 +3,8 @@ import { createContext, useContext, useState } from 'react'
 const DEFAULTS = {
   confidenceThreshold: 0.50,
   autoRefresh: false,
+  tomatoTrack: 'remote',
+  flowerTrack: 'remote',
 }
 
 const SettingsContext = createContext(null)

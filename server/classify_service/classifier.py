@@ -34,6 +34,8 @@ from shared.config import (
     FLOWER_CLASSES,
     MODELS_DIR,
     INFERENCE_SERVICE_URL,
+    TOMATO_INFERENCE_TRACK,
+    FLOWER_INFERENCE_TRACK,
 )
 
 logger = logging.getLogger("classifier")
@@ -535,6 +537,44 @@ async def classify_flowers_remote(
         "stage_counts": agg_stage_counts,
         "annotated_image_bytes": annotated,
     }
+
+
+# ---------------------------------------------------------------------------
+# Track-routing helpers — use these everywhere instead of calling local/remote
+# directly.  The active track is controlled by TOMATO_INFERENCE_TRACK and
+# FLOWER_INFERENCE_TRACK in shared/config.py (env vars).
+# ---------------------------------------------------------------------------
+
+async def run_tomato_classification(
+    image_bytes_list: list[bytes],
+    conf_threshold: float = 0.25,
+    track: str | None = None,
+) -> dict:
+    """
+    Dispatch tomato classification to the configured track (remote or local).
+    The `track` argument overrides the TOMATO_INFERENCE_TRACK env var when provided.
+    """
+    effective = track if track in ("remote", "local") else TOMATO_INFERENCE_TRACK
+    logger.info("tomato track=%s  images=%d", effective, len(image_bytes_list))
+    if effective == "remote":
+        return await classify_tomatoes_remote(image_bytes_list, conf_threshold)
+    return await classify_tomatoes(image_bytes_list, conf_threshold)
+
+
+async def run_flower_classification(
+    image_bytes_list: list[bytes],
+    conf_threshold: float = 0.25,
+    track: str | None = None,
+) -> dict:
+    """
+    Dispatch flower classification to the configured track (remote or local).
+    The `track` argument overrides the FLOWER_INFERENCE_TRACK env var when provided.
+    """
+    effective = track if track in ("remote", "local") else FLOWER_INFERENCE_TRACK
+    logger.info("flower track=%s  images=%d", effective, len(image_bytes_list))
+    if effective == "remote":
+        return await classify_flowers_remote(image_bytes_list, conf_threshold)
+    return await classify_flowers(image_bytes_list, conf_threshold)
 
 
 async def classify_depth(

@@ -225,6 +225,8 @@ async def upload_classify(
     greenhouse_row: int = Form(...),
     distanceFromRowStart: float = Form(...),
     confidence_threshold: float = Form(0.25),
+    tomato_track: str = Form("remote"),
+    flower_track: str = Form("remote"),
     images: list[UploadFile] = File(...),
 ):
     """
@@ -257,6 +259,8 @@ async def upload_classify(
         "distanceFromRowStart": distanceFromRowStart,
         "timestamp":            timestamp,
         "confidence_threshold": confidence_threshold,
+        "tomato_track":         tomato_track,
+        "flower_track":         flower_track,
     }
     try:
         async with httpx.AsyncClient(timeout=180) as client:
@@ -306,6 +310,8 @@ async def upload_classify(
 @app.post("/demoClassify")
 async def demo_classify(
     confidence_threshold: float = Form(0.25),
+    tomato_track: str = Form("remote"),
+    flower_track: str = Form("remote"),
     images: list[UploadFile] = File(...),
 ):
     """
@@ -333,7 +339,11 @@ async def demo_classify(
             resp = await client.post(
                 f"{CLASSIFY_SERVICE_URL}/classifyDirect",
                 files=multipart_files,
-                data={"confidence_threshold": str(confidence_threshold)},
+                data={
+                    "confidence_threshold": str(confidence_threshold),
+                    "tomato_track": tomato_track,
+                    "flower_track": flower_track,
+                },
             )
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:

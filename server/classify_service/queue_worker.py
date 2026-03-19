@@ -134,10 +134,10 @@ async def _process_job(job: dict) -> None:
 
         image_bytes_list = await _fetch_images_from_gridfs(original_ids)
 
-        # Run both classifiers in parallel
+        # Run both classifiers in parallel (track selected via config)
         tomato_result, flower_result = await asyncio.gather(
-            _classifier.classify_tomatoes(image_bytes_list),
-            _classifier.classify_flowers(image_bytes_list),
+            _classifier.run_tomato_classification(image_bytes_list),
+            _classifier.run_flower_classification(image_bytes_list),
         )
 
         # Store annotated images to GridFS
