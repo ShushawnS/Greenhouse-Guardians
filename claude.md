@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**GreenhouseGuardians** is a full-stack intelligence platform for tomato greenhouse operators. It allows users to upload images from greenhouse rows, automatically classify tomato ripeness and flower pollination stages using YOLOv8 models hosted on Hugging Face, and view summarized analytics through a clean dashboard UI.
+**GreenhouseGuardians** is a full-stack intelligence platform for tomato greenhouse operators. It allows users to upload images from greenhouse rows, automatically classify tomato ripeness and flower pollination stages using YOLOv8 models, and view summarized analytics through a clean dashboard UI.
 
 ---
 
@@ -19,117 +19,148 @@
   /getDetailedRowData ─►│ Results Service │◄──│ MongoDB  │◄──│ Classify Service │
   /getTrends ──────────►│                 │   └──────────┘   └──────────────────┘
                         └─────────────────┘
+                                                    ▲
+                                       ┌────────────────────────┐
+                                       │ ML Inference Service   │
+                                       │ (HF Space / local)     │
+                                       └────────────────────────┘
 ```
 
-The system consists of **three backend microservices** and a **React frontend**:
+The system consists of **three backend microservices**, an **optional external ML inference service**, and a **React frontend**:
 
-| Component          | Tech                        | Port  |
-| ------------------ | --------------------------- | ----- |
-| Upload Service     | Python (FastAPI)            | 8001  |
-| Classify Service   | Python (FastAPI)            | 8002  |
-| Results Service    | Python (FastAPI)            | 8003  |
-| Frontend           | React + Vite + Tailwind CSS | 5173  |
+| Component              | Tech                        | Port / Location                            |
+| ---------------------- | --------------------------- | ------------------------------------------ |
+| Upload Service         | Python (FastAPI)            | 8001                                       |
+| Classify Service       | Python (FastAPI)            | 8002                                       |
+| Results Service        | Python (FastAPI)            | 8003                                       |
+| Frontend               | React + Vite                | 5173                                       |
+| ML Inference Service   | FastAPI (HF Space / local)  | `INFERENCE_SERVICE_URL` env var            |
 
-All services share a single MongoDB Atlas cluster. Use **FastAPI** for all backend services due to its async support, excellent typing, and ease of file handling.
+All services share a single MongoDB Atlas cluster. Use **FastAPI** for all backend services.
+
+---
+
+## Environment & Configuration
+
+All backend services share a single `.env` file at `server/.env` (gitignored). Copy `server/.env.example` to get started.
+
+```bash
+# MongoDB Atlas
+MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=<AppName>
+DB_NAME=greenhouse_guardians
+
+# Inter-service URLs (change for Docker / different hosts)
+UPLOAD_SERVICE_URL=http://localhost:8001
+CLASSIFY_SERVICE_URL=http://localhost:8002
+RESULTS_SERVICE_URL=http://localhost:8003
+
+# External ML inference service (HF Space)
+INFERENCE_SERVICE_URL=https://deenp03-guardians-of-the-greenhouse-inference.hf.space
+
+# Inference track per model: "remote" (HF Space) or "local" (YOLOv8)
+TOMATO_INFERENCE_TRACK=remote
+FLOWER_INFERENCE_TRACK=remote
+
+# CORS (extend via EXTRA_CORS_ORIGINS=url1,url2)
+```
+
+Config is centralized in `server/shared/config.py`. All services import from there — do not duplicate config.
 
 ---
 
 ## MongoDB Connection
 
-```
-mongodb+srv://user:passwd@greenhouseguardians.zxzvapv.mongodb.net/?appName=GreenhouseGuardians
-```
-
-- Use `motor` (async MongoDB driver for Python) in every service.
-- Use `GridFS` (via `motor.motor_asyncio.AsyncIOMotorGridFSBucket`) for storing all images (original, annotated-tomato, annotated-flower, depth).
-- Database name: `greenhouse_guardians`
-
----
-
-## MongoDB Schema Design
+- Driver: `motor` (async) — `AsyncIOMotorGridFSBucket` for GridFS
+- Database: `greenhouse_guardians`
+- Image storage: GridFS bucket `images` (never store image bytes in documents)
 
 ### Collection: `row_data`
 
-Each document represents a **unique (greenhouse_row, distanceFromRowStart) pair** — i.e. a specific physical location in the greenhouse.
+Each document represents a unique `(greenhouse_row, distanceFromRowStart)` pair.
 
 ```jsonc
 {
   "_id": ObjectId,
   "greenhouse_row": int,           // e.g. 1, 2, 3
-  "distanceFromRowStart": float,   // e.g. 10.5 (meters)
+  "distanceFromRowStart": float,   // meters, e.g. 10.5
   "timestamps": {
-    "<ISO-timestamp>": {
-      "original_images": [GridFS_file_id, ...],      // raw uploaded images
-      "tomato_annotated_images": [GridFS_file_id, ...], // images with tomato bounding boxes
-      "flower_annotated_images": [GridFS_file_id, ...], // images with flower bounding boxes
-      "depth_images": [GridFS_file_id, ...],          // FUTURE: depth camera images
+    "<sanitized-ISO-timestamp>": {   // dots replaced with underscores (see make_ts_key)
+      "original_images": [GridFS_file_id, ...],
+      "tomato_annotated_images": [GridFS_file_id, ...],
+      "flower_annotated_images": [GridFS_file_id, ...],
+      "depth_images": [GridFS_file_id, ...],          // FUTURE
       "tomato_classification": {
         "detections": [
-          {
-            "class_id": int,       // 0=Unripe, 1=Half_Ripe, 2=Ripe
-            "label": str,
-            "confidence": float,
-            "bbox": { "x1": float, "y1": float, "x2": float, "y2": float }
-          }
+          { "class_id": int, "label": str, "confidence": float,
+            "bbox": { "x1": float, "y1": float, "x2": float, "y2": float } }
         ],
-        "summary": {
-          "total": int,
-          "by_class": { "Ripe": int, "Half_Ripe": int, "Unripe": int }
-        }
+        "summary": { "total": int, "by_class": { "Ripe": int, "Half_Ripe": int, "Unripe": int } }
       },
       "flower_classification": {
         "flowers": [
-          {
-            "bounding_box": [x1, y1, x2, y2],
-            "stage": int,          // 0, 1, or 2
-            "confidence": float
-          }
+          { "bounding_box": [x1, y1, x2, y2], "stage": int, "confidence": float }
         ],
         "total_flowers": int,
         "stage_counts": { "0": int, "1": int, "2": int }
       },
-      "depth_analysis": null       // FUTURE: tomato volume data from RealSense D435i
+      "depth_analysis": null        // FUTURE
     }
   }
 }
 ```
 
-### GridFS Bucket Naming Convention
+**Timestamp key sanitization**: ISO timestamps contain `.` which MongoDB interprets as a field-path separator. Use `make_ts_key(ts)` from `shared/config.py` to convert `.` → `_` before using as a key. Use `_key_to_ts(key)` to reverse.
 
-Use a single GridFS bucket called `images` with metadata to organize:
+### Collection: `daily_trends`
+
+Aggregated daily stats for the Trends page. Managed by `server/shared/trends.py`.
 
 ```jsonc
-// metadata stored with each GridFS file
+{
+  "date": "YYYY-MM-DD",
+  "tomatoes": { "ripe": int, "half_ripe": int, "unripe": int, "total": int },
+  "flowers": { "stage_0": int, "stage_1": int, "stage_2": int, "total": int },
+  "estimated_yield_kg": float,   // ripe×1.0 + half×0.8 + unripe×0.5, at 150g avg
+  "scan_count": int,
+  "location_count": int,
+  "last_updated": str
+}
+```
+
+### GridFS Metadata
+
+```jsonc
 {
   "greenhouse_row": int,
   "distanceFromRowStart": float,
   "timestamp": str,
   "image_type": "original" | "tomato_annotated" | "flower_annotated" | "depth",
-  "image_index": int   // which image in the set (0, 1, 2, ...)
+  "image_index": int
 }
 ```
 
 ---
 
-## Hugging Face Models
+## ML Inference
 
-### Tomato Ripeness Classifier (YOLOv8)
-- **URL**: `https://huggingface.co/deenp03/tomato-ripeness-classifier/blob/main/ripeness_best.pt`
-- **Direct download**: `https://huggingface.co/deenp03/tomato-ripeness-classifier/resolve/main/ripeness_best.pt`
-- **Type**: YOLOv8 object detection
-- **Classes**: `{0: "Unripe", 1: "Half_Ripe", 2: "Ripe"}`
+### Models
 
-### Flower Pollination Stage Classifier (YOLOv8)
-- **URL**: `https://huggingface.co/deenp03/tomato_pollination_stage_classifier`
-- **Direct download**: `https://huggingface.co/deenp03/tomato_pollination_stage_classifier/resolve/main/best.pt` (check repo for exact filename)
-- **Type**: YOLOv8 object detection
-- **Classes**: `{0: "Stage_0", 1: "Stage_1", 2: "Stage_2"}` (verify exact class names from model metadata)
+| Model | HF Repo | Filename | Classes |
+|---|---|---|---|
+| Tomato Ripeness | `deenp03/tomato-ripeness-classifier` | `ripeness_finetuned_new.pt` | `{0: Unripe, 1: Half_Ripe, 2: Ripe}` |
+| Flower Stage | `deenp03/tomato_pollination_stage_classifier` | `best.pt` | `{0: Stage_0, 1: Stage_1, 2: Stage_2}` |
 
-### Model Loading Strategy
-1. **First**: Try to load the model from a local cache path (e.g. `./models/ripeness_best.pt`).
-2. **Only if the file does not exist locally**: Download from Hugging Face using `huggingface_hub` library's `hf_hub_download()` and save to the local cache path.
-3. Use `ultralytics.YOLO(model_path)` to load.
-4. Models should be loaded **once at service startup** and held in memory.
+### Inference Tracks
+
+Each model has an independently configurable inference track (`TOMATO_INFERENCE_TRACK` / `FLOWER_INFERENCE_TRACK`):
+
+- **`remote`** — calls the hosted HF Space inference API (`INFERENCE_SERVICE_URL`). This is the default and avoids local GPU/memory requirements.
+- **`local`** — loads YOLOv8 model locally. On startup, try local cache (`server/models/`) first; download from HuggingFace only if missing. Models held in memory.
+
+### Bounding Box Colors (when annotating locally)
+
+- Tomatoes: green (Ripe), yellow (Half_Ripe), red (Unripe)
+- Flowers: labeled by stage with distinct colors
 
 ---
 
@@ -138,252 +169,122 @@ Use a single GridFS bucket called `images` with metadata to organize:
 ### 1. Upload Service (port 8001)
 
 #### `POST /uploadData`
-**Inputs** (multipart form):
-- `timestamp` (string, ISO format)
-- `greenhouse_row` (int)
-- `distanceFromRowStart` (float)
-- `images` (list of uploaded files, 2+)
+Inputs (multipart): `timestamp`, `greenhouse_row`, `distanceFromRowStart`, `images[]`
 
-**Logic**:
-1. Find or create the `row_data` document for `(greenhouse_row, distanceFromRowStart)`.
-2. Store uploaded images into GridFS with proper metadata.
-3. Create a timestamp entry in the document with `original_images` file IDs.
-4. Enqueue a classification job to the Classify Service's queue by calling `POST http://classify-service:8002/enqueue` with the document's `_id`, `greenhouse_row`, `distanceFromRowStart`, and `timestamp`.
-5. Return success with the document `_id`.
+1. Upsert `row_data` document for `(greenhouse_row, distanceFromRowStart)`.
+2. Store images in GridFS; record file IDs in timestamp entry.
+3. Call `POST classify-service:8002/enqueue` → fire-and-forget classification.
+4. Return `{ document_id }`.
 
 #### `POST /uploadClassify`
-**Inputs** (multipart form):
-- `timestamp` (string, ISO format)
-- `greenhouse_row` (int)
-- `distanceFromRowStart` (float)
-- `images` (list of uploaded files, 2+)
+Inputs (multipart): `timestamp`, `greenhouse_row`, `distanceFromRowStart`, `images[]`
 
-**Logic**:
-1. Find or create the `row_data` document for `(greenhouse_row, distanceFromRowStart)`.
-2. Store uploaded images into GridFS with proper metadata.
-3. Create a timestamp entry in the document with `original_images` file IDs.
-4. Call Classify Service's **direct/priority endpoint** `POST http://classify-service:8002/classifyNow` — this skips the queue and runs classification immediately.
-5. Poll the MongoDB document (e.g., every 1–2 seconds, timeout after 120 seconds) until both `tomato_classification` and `flower_classification` exist under the timestamp.
-6. Return the classification results along with GridFS file IDs for annotated images.
+1. Upsert `row_data` doc, store images in GridFS.
+2. Call `POST classify-service:8002/classifyNow` (skips queue, immediate).
+3. Poll MongoDB every ~1s (timeout 120s) until both classifications are present.
+4. Return classification results + annotated image file IDs.
 
 #### `POST /demoClassify`
-**Inputs** (multipart form):
-- `images` (list of uploaded files, 2+)
+Inputs (multipart): `images[]`
 
-**Logic**:
-1. Do **not** store anything in MongoDB.
-2. Call Classify Service's `POST http://classify-service:8002/classifyDirect` sending the images directly.
-3. Receive annotated images (base64 encoded) and classification summaries back.
-4. Return annotated images and summary data in the response.
+1. Do **not** touch MongoDB.
+2. Forward images to `classify-service:8002/classifyDirect`.
+3. Return base64 annotated images + classification summaries.
 
 ---
 
 ### 2. Classify Service (port 8002)
 
-This service manages classification jobs and runs YOLOv8 inference.
-
-#### Internal State
-- Maintain an **in-memory priority queue** (use Python's `asyncio.PriorityQueue` or a list sorted by priority/timestamp).
-- A background worker continuously pops items from the queue and processes them.
+Manages YOLOv8 classification with an in-memory async priority queue.
 
 #### `POST /enqueue`
-**Input JSON**:
-```json
-{
-  "document_id": "ObjectId string",
-  "greenhouse_row": 1,
-  "distanceFromRowStart": 10.0,
-  "timestamp": "2026-03-12T15:55:33.813000"
-}
-```
-**Logic**: Add to the priority queue. Return 202 Accepted.
+JSON: `{ document_id, greenhouse_row, distanceFromRowStart, timestamp }`
+→ Enqueue for background processing. Returns 202.
 
 #### `POST /classifyNow`
-**Input JSON**:
-```json
-{
-  "document_id": "ObjectId string",
-  "greenhouse_row": 1,
-  "distanceFromRowStart": 10.0,
-  "timestamp": "2026-03-12T15:55:33.813000"
-}
-```
-**Logic**: Skip the queue. Run `classifyFlowers` and `classifyTomatoes` immediately (in parallel using `asyncio.gather`). Store results to MongoDB. Return 200 with a success message.
+JSON: `{ document_id, greenhouse_row, distanceFromRowStart, timestamp }`
+→ Skip queue; run `classifyTomatoes` + `classifyFlowers` in parallel (`asyncio.gather`). Persist to MongoDB. Returns 200.
 
 #### `POST /classifyDirect`
-**Input**: Multipart form with `images` (list of files).
-**Logic**:
-1. Run `classifyFlowers` and `classifyTomatoes` in parallel on the provided images.
-2. Do NOT save to MongoDB.
-3. Return JSON with annotated images as base64 strings and classification summary data.
+Multipart: `images[]`
+→ Run inference (no DB writes). Return base64 annotated images + summaries.
 
-#### `classifyTomatoes(images)` — Internal Method
-1. Load each image with OpenCV / PIL.
-2. Run inference with the tomato YOLOv8 model.
-3. Draw bounding boxes on the image (green for Ripe, yellow for Half_Ripe, red for Unripe) with labels and confidence scores.
-4. Store annotated image to GridFS (if saving to DB) with `image_type: "tomato_annotated"`.
-5. Build and store classification data per the schema above.
+#### Background Worker
+- Async loop popping from the priority queue.
+- Fetches originals from GridFS, runs both classifiers in parallel, updates MongoDB.
 
-#### `classifyFlowers(images)` — Internal Method
-1. Load each image with OpenCV / PIL.
-2. Run inference with the flower YOLOv8 model.
-3. Draw bounding boxes on the image with stage labels and confidence.
-4. Store annotated image to GridFS (if saving to DB) with `image_type: "flower_annotated"`.
-5. Build and store classification data per the schema above.
-
-#### Background Queue Worker
-- Runs in an infinite loop as an asyncio background task.
-- Pops the next item from the priority queue.
-- Fetches original images from GridFS.
-- Runs `classifyFlowers` and `classifyTomatoes` in parallel.
-- Updates the MongoDB document with results.
-
-#### FUTURE PLACEHOLDER: `classifyDepth(rgb_image, depth_image, tomato_detections)`
-- **Do not implement the logic yet.**
-- Create a stub function with a docstring explaining:
-  - Takes an RGB image, a RealSense D435i depth image, and the tomato bounding box detections.
-  - Maps RGB bounding boxes to the depth image.
-  - Computes estimated tomato volume from the depth data.
-  - Stores the depth image with bounding boxes and volume labels in GridFS.
-  - Saves `depth_analysis` data to the MongoDB document under the timestamp.
-- The function should just `pass` or raise `NotImplementedError("Depth analysis not yet implemented")`.
+#### `classifyDepth` — FUTURE STUB
+Exists in `classifier.py` with a docstring but raises `NotImplementedError`. Takes RGB image, RealSense D435i depth image, tomato detections → estimates tomato volume.
 
 ---
 
 ### 3. Results Service (port 8003)
 
 #### `GET /getSummaryResults`
-**Logic**:
-1. Query all documents in `row_data`.
-2. For each document, get the **latest timestamp** entry.
-3. Extract only the classification summary data (tomato counts, flower counts) — **skip all image data**.
-4. Aggregate totals across the entire greenhouse:
-   - Total tomatoes by ripeness class
-   - Total flowers by stage
-   - Per-row breakdown
-5. Return the aggregated summary.
+- Query all `row_data`, take latest timestamp per doc.
+- Aggregate total tomato counts (by class), flower counts (by stage), per-row breakdown.
+- Response: `{ total_tomatoes, total_flowers, total_tomato_count, total_flower_count, rows[] }`
 
-**Response shape**:
-```json
-{
-  "total_tomatoes": { "Ripe": 120, "Half_Ripe": 45, "Unripe": 80 },
-  "total_flowers": { "0": 30, "1": 50, "2": 20 },
-  "total_tomato_count": 245,
-  "total_flower_count": 100,
-  "rows": [
-    {
-      "greenhouse_row": 1,
-      "distances": [
-        {
-          "distanceFromRowStart": 10.0,
-          "latest_timestamp": "...",
-          "tomato_summary": { ... },
-          "flower_summary": { ... }
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### `GET /getDetailedRowData?row={row_number}`
-**Logic**:
-1. Query all documents where `greenhouse_row == row_number`.
-2. For each distance entry, get the **latest timestamp's** data.
-3. Include: classification data, annotated image GridFS file IDs, and original image file IDs.
-4. Provide a sub-endpoint or include base64 image data for the annotated images so the frontend can display them.
-5. Return all distances sorted by `distanceFromRowStart`.
-
-**Response shape**:
-```json
-{
-  "greenhouse_row": 1,
-  "distances": [
-    {
-      "distanceFromRowStart": 5.0,
-      "latest_timestamp": "...",
-      "tomato_classification": { ... },
-      "flower_classification": { ... },
-      "images": {
-        "original": ["base64 or URL ..."],
-        "tomato_annotated": ["base64 or URL ..."],
-        "flower_annotated": ["base64 or URL ..."]
-      }
-    }
-  ]
-}
-```
+#### `GET /getDetailedRowData?row={n}`
+- Query all docs for `greenhouse_row == n`, sorted by `distanceFromRowStart`.
+- Return latest timestamp's classification data + image URLs (`/getImage/{file_id}` format).
 
 #### `GET /getImage/{file_id}`
-A helper endpoint to serve GridFS images by file ID. Returns the image bytes with proper content-type.
+- Serve GridFS image bytes with correct content-type.
 
 #### `GET /getTrends`
-**Stub endpoint.** Returns `{"message": "Trends endpoint coming soon", "data": null}` with 200 status.
+- Returns 7-day `daily_trends` data for the Trends charts.
 
 ---
 
 ## Frontend Specification
 
-**Tech stack**: React 18, Vite, Tailwind CSS, React Router, Recharts (for charts), Axios.
+**Stack**: React 18, Vite, React Router, Recharts, Axios. No Tailwind — uses inline styles with design tokens.
 
-### Design System
+### Design Tokens (`client/src/tokens.js`)
 
-- **Theme**: Light background with a **green color palette**.
-  - Primary green: `#22c55e` (green-500)
-  - Dark green: `#15803d` (green-700)
-  - Light green backgrounds: `#f0fdf4` (green-50), `#dcfce7` (green-100)
-  - Accent: `#166534` (green-800) for headings
-  - White cards on `#f9fafb` (gray-50) page background
-- **Typography**: Use `Inter` font family (import from Google Fonts). Clean, modern, consistent sizing.
-  - Page titles: `text-2xl font-bold`
-  - Section headers: `text-lg font-semibold`
-  - Body: `text-sm` or `text-base`
-- **Spacing**: Even and generous — `p-6` for cards, `gap-6` between grid items, `space-y-4` for stacked elements.
-- **Cards**: White background, `rounded-xl`, subtle `shadow-sm`, `border border-green-100`.
-- **Overall feel**: Clean, calm, professional agricultural dashboard. Think Notion meets a farm management tool.
+Earthy, warm minimal palette:
 
-### Navigation
-- Fixed top navbar with the app name **"GreenhouseGuardians"** and a leaf/plant icon.
-- Four tabs as nav links: **Dashboard**, **Classify & Upload**, **Row Details**, **Trends**.
-- Active tab highlighted in green.
+```js
+C.bg0 = '#f9f7f4'   // page background
+C.bg1 = '#ffffff'   // card surface
+C.green = '#3d6b4f' // brand green (forest)
+C.t1 = '#1c1917'    // primary text
+C.t2 = '#6b6560'    // secondary text
+C.t3 = '#a09890'    // muted text
+// Semantic: ripe (green), halfRipe (amber), unripe (red)
+// Flowers: flower0 (slate blue), flower1 (violet), flower2 (burnt sienna)
+```
 
-### Tab 1: Dashboard (`/`)
-- Calls `GET /getSummaryResults` on load.
-- **Top row**: Summary stat cards in a grid:
-  - Total Tomatoes (with breakdown: Ripe / Half Ripe / Unripe)
-  - Total Flowers (with breakdown by stage)
-  - Predicted Yield (placeholder/estimate — calculate as: `ripe_tomatoes + (half_ripe * 0.8) + (unripe * 0.5)` as a rough proxy, labeled "Estimated Yield in X Weeks")
-- **Middle row**: Bar chart or donut chart showing tomato ripeness distribution and flower stage distribution side by side (use Recharts).
-- **Bottom row**: A table or accordion showing per-row summaries.
+Flower stage labels: `{ 0: 'Bud', 1: 'Anthesis', 2: 'Post-Anthesis' }`.
 
-### Tab 2: Classify & Upload (`/classify`)
-- Calls `POST /uploadClassify` (or `/demoClassify` for demo mode).
-- **Upload form**:
-  - Dropzone for images (drag & drop + file picker, accept 2+ images).
-  - Input fields: Greenhouse Row (number), Distance from Row Start (number), Timestamp (auto-filled with current time, editable).
-  - Toggle: "Demo Mode" — if on, skip row/distance fields, call `/demoClassify` instead.
-  - Submit button: "Classify" (green, prominent).
-- **Results area** (shown after response):
-  - Side-by-side display of annotated images (tomato and flower).
-  - Summary cards: tomato counts by class, flower counts by stage.
-  - Loading spinner while waiting.
+### Routes
 
-### Tab 3: Row Details (`/rows`)
-- Calls `GET /getDetailedRowData?row=X`.
-- **Controls at top**:
-  - Row selector dropdown (populated from available rows).
-  - Date/time range filter (default: latest).
-- **Main content**:
-  - A horizontal visual "row line" showing data points positioned by `distanceFromRowStart`. Each point is a clickable dot/marker.
-  - Clicking a point opens a detail panel showing:
-    - Original + annotated images (scrollable gallery).
-    - Tomato and flower classification summaries.
-- **Bottom**: Summary stats for the entire selected row.
+| Path | Page | Notes |
+|---|---|---|
+| `/onboarding` | Onboarding | Full-screen, no navbar |
+| `/` | Dashboard | Summary stats + charts |
+| `/classify` | Classify & Upload | Upload form + results |
+| `/rows` | Row Details | Row visualizer + image gallery |
+| `/trends` | Trends | Line charts from `daily_trends` |
+| `/timeline` | Timeline | Chronological scan feed |
+| `/settings` | Settings | Confidence threshold, inference track, auto-refresh |
 
-### Tab 4: Trends (`/trends`)
-- Placeholder page.
-- Show a message: "Trends coming soon — track flowers and tomatoes over time."
-- Include two empty chart placeholders (Recharts `LineChart` with sample axes labeled "Flowers over time" and "Tomatoes over time").
+### Key Pages
+
+**Dashboard**: Calls `/getSummaryResults`. Stat cards (total tomatoes/flowers, estimated yield), donut charts by ripeness/stage, per-row table. Supports week selection.
+
+**Classify & Upload**: Upload dropzone (2+ images), row/distance inputs, timestamp (auto-filled). Demo mode toggle → calls `/demoClassify` instead. Shows annotated images + summary after response.
+
+**Row Details**: Row selector dropdown, horizontal visualizer with clickable distance markers, image gallery modal, per-distance classification breakdown.
+
+**Timeline**: Chronological feed of classification events. Auto-refresh (configurable in Settings, polls every 20s).
+
+**Trends**: Line charts for tomato ripeness and flower stage counts over the last 7 days (from `daily_trends`).
+
+**Settings**: Confidence threshold slider (10–100%, presets at 25/50/75%), tomato/flower inference track toggle (remote/local), auto-refresh toggle, "Replay intro" button.
+
+**Onboarding**: First-run flow to configure greenhouse row count. Config stored in localStorage via `useGreenhouseConfig` hook.
 
 ---
 
@@ -392,125 +293,137 @@ A helper endpoint to serve GridFS images by file ID. Returns the image bytes wit
 ```
 greenhouse-guardians/
 ├── CLAUDE.md
-├── docker-compose.yml         # Optional: for running all services
+├── readme.md
+├── dev.sh                         # Start all services locally (one command)
+├── .github/workflows/
+│   └── deploy-hf-spaces.yml       # CI: deploy backend to Hugging Face Spaces
+├── deploy/hf-spaces/
+│   ├── Dockerfile                 # All 3 backend services + nginx via supervisord
+│   ├── nginx.conf                 # Reverse proxy: routes /upload/, /classify/, /results/
+│   ├── supervisord.conf           # Process manager for services inside container
+│   └── requirements.txt
 ├── server/
+│   ├── .env                       # Gitignored — real credentials
+│   ├── .env.example               # Template to copy
 │   ├── shared/
-│   │   ├── db.py              # MongoDB connection utility (motor client, GridFS bucket)
-│   │   └── config.py          # Shared config: DB URI, service URLs, model paths
+│   │   ├── config.py              # All config: DB URI, URLs, model paths, CORS
+│   │   ├── db.py                  # Motor client + GridFS bucket helpers
+│   │   └── trends.py             # daily_trends collection read/write utilities
 │   ├── upload_service/
-│   │   ├── main.py            # FastAPI app with /uploadData, /uploadClassify, /demoClassify
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
+│   │   ├── main.py                # /uploadData, /uploadClassify, /demoClassify
+│   │   └── requirements.txt
 │   ├── classify_service/
-│   │   ├── main.py            # FastAPI app with /enqueue, /classifyNow, /classifyDirect
-│   │   ├── classifier.py      # YOLOv8 model loading + inference + annotation logic
-│   │   ├── queue_worker.py    # Background priority queue consumer
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
+│   │   ├── main.py                # /enqueue, /classifyNow, /classifyDirect
+│   │   ├── classifier.py          # YOLOv8 inference + annotation + classifyDepth stub
+│   │   ├── queue_worker.py        # Background async queue consumer
+│   │   └── requirements.txt
 │   ├── results_service/
-│   │   ├── main.py            # FastAPI app with /getSummaryResults, /getDetailedRowData, /getTrends, /getImage
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   └── models/                # Local cache for downloaded .pt model files (gitignored)
-├── client/
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   ├── index.html
-│   ├── public/
-│   └── src/
-│       ├── main.jsx
-│       ├── App.jsx            # Router + Layout + Navbar
-│       ├── api/
-│       │   └── index.js       # Axios instance + API call functions
-│       ├── pages/
-│       │   ├── Dashboard.jsx
-│       │   ├── ClassifyUpload.jsx
-│       │   ├── RowDetails.jsx
-│       │   └── Trends.jsx
-│       ├── components/
-│       │   ├── Navbar.jsx
-│       │   ├── StatCard.jsx
-│       │   ├── ImageGallery.jsx
-│       │   ├── RowVisualizer.jsx   # Horizontal row line with distance markers
-│       │   ├── LoadingSpinner.jsx
-│       │   └── ChartCard.jsx
-│       └── index.css          # Tailwind imports + Inter font
-└── README.md
+│   │   ├── main.py                # /getSummaryResults, /getDetailedRowData, /getImage, /getTrends
+│   │   └── requirements.txt
+│   ├── models/                    # Local .pt cache (gitignored)
+│   └── images/                    # Sample images organized by flower/week/row/distance
+└── client/
+    ├── vite.config.js
+    ├── src/
+    │   ├── main.jsx
+    │   ├── App.jsx                # Router + Layout + SettingsProvider
+    │   ├── tokens.js              # Design tokens (C.*, TOMATO_COLORS, FLOWER_COLORS)
+    │   ├── api/index.js           # Axios instances + all API call functions
+    │   ├── context/
+    │   │   └── SettingsContext.jsx  # Global settings (confidence, track, autoRefresh)
+    │   ├── hooks/
+    │   │   └── useGreenhouseConfig.js  # Greenhouse config (row count) in localStorage
+    │   ├── pages/
+    │   │   ├── Dashboard.jsx
+    │   │   ├── ClassifyUpload.jsx
+    │   │   ├── RowDetails.jsx
+    │   │   ├── Trends.jsx
+    │   │   ├── Timeline.jsx
+    │   │   ├── Settings.jsx
+    │   │   └── Onboarding.jsx
+    │   └── components/
+    │       ├── Navbar.jsx
+    │       ├── StatCard.jsx
+    │       ├── ChartCard.jsx
+    │       ├── DonutChart.jsx
+    │       ├── GreenhouseHeatmap.jsx
+    │       ├── ImageGallery.jsx
+    │       ├── ImageModal.jsx
+    │       ├── LoadingSpinner.jsx
+    │       └── RowVisualizer.jsx
+    └── index.css
 ```
 
 ---
 
-## Key Python Dependencies (per service)
+## Development
+
+### Quick Start
+
+```bash
+# 1. Backend — one-time setup
+cd server
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r upload_service/requirements.txt \
+            -r classify_service/requirements.txt \
+            -r results_service/requirements.txt
+cp .env.example .env   # fill in MONGO_URI
+
+# 2. Frontend — one-time setup
+cd client && npm install
+
+# 3. Start everything
+./dev.sh    # starts all 3 services + frontend with colored prefixed logs
+```
+
+### Running Services Individually
+
+```bash
+cd server/upload_service  && uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+cd server/classify_service && uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+cd server/results_service  && uvicorn main:app --host 0.0.0.0 --port 8003 --reload
+cd client && npm run dev
+```
+
+### CORS
+All services allow `http://localhost:5173` and `*` for development. Extend via `EXTRA_CORS_ORIGINS` env var.
+
+### Deployment
+The backend deploys to a Hugging Face Space via `.github/workflows/deploy-hf-spaces.yml`. The `deploy/hf-spaces/` directory contains a self-contained Docker image that runs all three services behind nginx on port 7860 using supervisord.
+
+---
+
+## Key Python Dependencies
 
 ```
 # All services
 fastapi
 uvicorn[standard]
-motor                  # async MongoDB driver
+motor
 pymongo
-python-multipart       # for file uploads in FastAPI
+python-dotenv
+python-multipart
 
 # Classify Service additionally
 ultralytics            # YOLOv8
-huggingface_hub        # for downloading models
-opencv-python-headless # image processing
+huggingface_hub
+opencv-python-headless
 Pillow
 numpy
+httpx                  # for calling remote inference service
 ```
-
----
-
-## Development & Testing Instructions
-
-### Running Services
-Each service should be runnable standalone:
-```bash
-cd server/upload_service && uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-cd server/classify_service && uvicorn main:app --host 0.0.0.0 --port 8002 --reload
-cd server/results_service && uvicorn main:app --host 0.0.0.0 --port 8003 --reload
-cd client && npm run dev
-```
-
-### CORS
-All backend services must enable CORS for `http://localhost:5173` (Vite dev server) and `*` for development.
-
-### Testing Checklist
-1. **Upload Service**:
-   - [ ] `/uploadData` creates a document and enqueues classification.
-   - [ ] `/uploadClassify` creates a document, triggers immediate classification, polls and returns results.
-   - [ ] `/demoClassify` returns annotated images and summaries without touching the DB.
-2. **Classify Service**:
-   - [ ] Models load on startup (download if not cached).
-   - [ ] `/enqueue` adds to queue, background worker processes it.
-   - [ ] `/classifyNow` runs classification immediately.
-   - [ ] `/classifyDirect` returns results without DB writes.
-   - [ ] Annotated images have visible, correct bounding boxes.
-3. **Results Service**:
-   - [ ] `/getSummaryResults` aggregates all latest data correctly.
-   - [ ] `/getDetailedRowData?row=1` returns correct images and data.
-   - [ ] `/getImage/{file_id}` serves images from GridFS.
-4. **Frontend**:
-   - [ ] Dashboard loads and displays summary data.
-   - [ ] Classify tab uploads images and shows results.
-   - [ ] Row Details tab shows row visualization with clickable points.
-   - [ ] All pages are responsive, styled consistently, and use the green theme.
-
-### Error Handling
-- All endpoints should return proper HTTP error codes (400 for bad input, 500 for internal errors).
-- All endpoints should validate that required fields are present.
-- Frontend should display user-friendly error messages and loading states.
-- MongoDB operations should use try/except blocks.
 
 ---
 
 ## Important Implementation Notes
 
-1. **GridFS for ALL images**: Never store image bytes directly in documents. Always use GridFS and store the `file_id` reference.
-2. **Model loading**: Load both YOLOv8 models once at Classify Service startup. Keep them in memory. Use `try/except` — try loading from local path first, download from HuggingFace only if the local file doesn't exist.
-3. **Async everything**: Use `async/await` throughout. Motor is async-native. Use `asyncio.gather` for parallel classification.
-4. **Image annotation**: When drawing bounding boxes, use OpenCV's `cv2.rectangle` and `cv2.putText`. Use distinct colors per class. Return annotated images as both GridFS-stored files and optionally base64 for API responses.
-5. **Polling in uploadClassify**: Use a simple async loop with `await asyncio.sleep(1)` checking the DB, with a max timeout of 120 seconds.
-6. **Frontend API base URL**: Configure via environment variable or Vite's `import.meta.env.VITE_API_URL`, defaulting to `http://localhost` with appropriate ports for each service. Consider a simple API gateway or proxy config in Vite to route `/api/upload/*`, `/api/classify/*`, `/api/results/*` to their respective services.
-7. **Depth analysis placeholder**: The `classifyDepth` stub function should exist in `classifier.py` with a full docstring but no implementation. The MongoDB schema already accounts for `depth_images` and `depth_analysis` fields.
+1. **GridFS for ALL images**: Never store bytes in documents — always GridFS + file_id reference.
+2. **Timestamp key sanitization**: Always use `make_ts_key()` / `_key_to_ts()` when reading/writing timestamp keys in MongoDB.
+3. **Inference track**: Check `TOMATO_INFERENCE_TRACK` / `FLOWER_INFERENCE_TRACK` before deciding local vs. remote. Default is `remote` (HF Space).
+4. **Async everything**: `async/await` throughout. Motor is async-native. Use `asyncio.gather` for parallel classification.
+5. **Model loading (local track)**: Load once at startup. Try local cache first; download from HuggingFace only if missing.
+6. **Polling in uploadClassify**: `await asyncio.sleep(1)` loop checking DB, max 120s timeout.
+7. **Frontend API**: The `client/src/api/index.js` file has separate Axios instances for each service. Update base URLs there if service locations change.
+8. **Design tokens**: All colors, spacing, and type come from `client/src/tokens.js`. Never hardcode color values in components.
+9. **Depth analysis**: `classifyDepth` stub exists in `classifier.py` — do not implement, just keep the stub.
+10. **daily_trends**: Updated on every successful classification via `update_daily_trend()` in `shared/trends.py`.
