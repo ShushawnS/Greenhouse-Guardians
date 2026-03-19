@@ -313,6 +313,12 @@ function TimelineEntry({ entry, isNew }) {
                         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
                           <Thumb
                             src={origPath}
+                            label="Original"
+                            detections={[]}
+                            onClick={() => openModal(origPath, `Original · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, [])}
+                          />
+                          <Thumb
+                            src={origPath}
                             label="Tomato Detection"
                             detections={tomatoDetectionsForImage(i)}
                             onClick={() => openModal(origPath, `Tomato · Row ${entry.greenhouse_row} · ${entry.distanceFromRowStart}m`, tomatoDetectionsForImage(i))}

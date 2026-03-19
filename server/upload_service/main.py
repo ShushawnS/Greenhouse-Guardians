@@ -9,6 +9,7 @@ POST /demoClassify    – Forward images to Classify Service, return annotated r
 """
 
 import asyncio
+import base64
 import io
 import logging
 import os
@@ -428,7 +429,12 @@ async def demo_classify(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not reach Classify Service: {exc}") from exc
 
-    return resp.json()
+    result = resp.json()
+    result["original_images_b64"] = [
+        base64.b64encode(data).decode()
+        for _, data, _ in files_data
+    ]
+    return result
 
 
 # ---------------------------------------------------------------------------

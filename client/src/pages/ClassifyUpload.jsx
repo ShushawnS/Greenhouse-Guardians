@@ -204,32 +204,24 @@ export default function ClassifyUpload() {
 
   if (results) {
     const { mode, data } = results
-    if (mode === 'demo') {
-      tomatoImages = (data.annotated_images?.tomato || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`,
-        label: `Image ${i + 1}`,
-        detections: perImageTomatoDetections(data.tomato_classification, i),
-      }))
-      flowerImages = (data.annotated_images?.flower || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`,
-        label: `Image ${i + 1}`,
-        detections: perImageFlowerDetections(data.flower_classification, i),
-      }))
-    } else {
-      originalImages = (data.original_image_ids || []).map((id, i) => ({
-        src: getImageUrl(id), label: `Image ${i + 1}`, detections: [],
-      }))
-      tomatoImages = (data.tomato_annotated_ids || []).map((id, i) => ({
-        src: getImageUrl(id),
-        label: `Image ${i + 1}`,
-        detections: perImageTomatoDetections(data.tomato_classification, i),
-      }))
-      flowerImages = (data.flower_annotated_ids || []).map((id, i) => ({
-        src: getImageUrl(id),
-        label: `Image ${i + 1}`,
-        detections: perImageFlowerDetections(data.flower_classification, i),
-      }))
-    }
+    const count = mode === 'demo'
+      ? (data.original_images_b64 || []).length
+      : (data.original_image_ids || []).length
+    const toSrc = (i) => mode === 'demo'
+      ? `data:image/jpeg;base64,${(data.original_images_b64 || [])[i]}`
+      : getImageUrl((data.original_image_ids || [])[i])
+
+    originalImages = Array.from({ length: count }, (_, i) => ({
+      src: toSrc(i), label: `Image ${i + 1}`, detections: [],
+    }))
+    tomatoImages = Array.from({ length: count }, (_, i) => ({
+      src: toSrc(i), label: `Image ${i + 1}`,
+      detections: perImageTomatoDetections(data.tomato_classification, i),
+    }))
+    flowerImages = Array.from({ length: count }, (_, i) => ({
+      src: toSrc(i), label: `Image ${i + 1}`,
+      detections: perImageFlowerDetections(data.flower_classification, i),
+    }))
   }
 
   const tomatoSummary = results?.data?.tomato_classification?.summary
