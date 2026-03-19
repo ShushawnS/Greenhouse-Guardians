@@ -366,8 +366,19 @@ export default function Timeline() {
         setError(null)
         setLoading(false)
       } else {
+        const freshMap = new Map(fresh.map(e => [e.id, e]))
         const unseen = fresh.filter(e => !seenIdsRef.current.has(e.id))
         if (unseen.length > 0) setPending(unseen)
+
+        // Update existing entries that have gone from pending → classified
+        setEntries(prev => prev.map(e => {
+          const updated = freshMap.get(e.id)
+          if (updated && !e.tomato_classification && !e.flower_classification &&
+              (updated.tomato_classification || updated.flower_classification)) {
+            return updated
+          }
+          return e
+        }))
       }
     } catch (e) {
       if (initial) {
