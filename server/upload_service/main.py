@@ -129,10 +129,13 @@ async def _create_timestamp_entry(
     doc_id: ObjectId,
     timestamp: str,
     original_image_ids: list[str],
+    depth_image_ids: list[str] | None = None,
+    depth_intrinsics: dict | None = None,
 ) -> None:
     """
     Write a fresh timestamp entry into the row_data document.
     Initialises all classification fields to None / empty list.
+    Optionally stores depth image IDs and camera intrinsics.
     """
     collection = get_db()["row_data"]
     await collection.update_one(
@@ -142,7 +145,8 @@ async def _create_timestamp_entry(
                 "original_images":          original_image_ids,
                 "tomato_annotated_images":  [],
                 "flower_annotated_images":  [],
-                "depth_images":             [],
+                "depth_images":             depth_image_ids or [],
+                "depth_intrinsics":         depth_intrinsics,
                 "tomato_classification":    None,
                 "flower_classification":    None,
                 "depth_analysis":           None,
@@ -161,10 +165,15 @@ async def upload_data(
     greenhouse_row: int = Form(...),
     distanceFromRowStart: float = Form(...),
     images: list[UploadFile] = File(...),
+    depth_image: UploadFile | None = File(None),
+    fx: float | None = Form(None),
+    fy: float | None = Form(None),
+    depth_scale: float | None = Form(None),
 ):
     """
     Store images to GridFS, persist a timestamp entry in row_data,
     and asynchronously enqueue a classification job.
+    Optionally accepts a depth .npy file and camera intrinsics for volume estimation.
     """
     if len(images) < 1:
         raise HTTPException(status_code=400, detail="At least 1 image is required.")
@@ -173,7 +182,7 @@ async def upload_data(
     doc = await _find_or_create_row_doc(greenhouse_row, distanceFromRowStart)
     doc_id: ObjectId = doc["_id"]
 
-    # 2. Store images to GridFS
+    # 2. Store RGB images to GridFS
     try:
         file_ids = await _store_images_to_gridfs(
             images, greenhouse_row, distanceFromRowStart, timestamp, "original"
@@ -182,8 +191,26 @@ async def upload_data(
         logger.exception("GridFS upload failed")
         raise HTTPException(status_code=500, detail=f"Image storage failed: {exc}") from exc
 
+    # 2b. Store depth image to GridFS (if provided)
+    depth_image_ids: list[str] = []
+    depth_intrinsics: dict | None = None
+    if depth_image is not None:
+        try:
+            depth_image_ids = await _store_images_to_gridfs(
+                [depth_image], greenhouse_row, distanceFromRowStart, timestamp, "depth"
+            )
+        except Exception as exc:
+            logger.exception("GridFS depth upload failed")
+            raise HTTPException(status_code=500, detail=f"Depth image storage failed: {exc}") from exc
+        if fx is not None and fy is not None and depth_scale is not None:
+            depth_intrinsics = {"fx": fx, "fy": fy, "depth_scale": depth_scale}
+
     # 3. Create timestamp entry
-    await _create_timestamp_entry(doc_id, timestamp, file_ids)
+    await _create_timestamp_entry(
+        doc_id, timestamp, file_ids,
+        depth_image_ids=depth_image_ids,
+        depth_intrinsics=depth_intrinsics,
+    )
 
     # 4. Enqueue classification job (fire-and-forget; don't block the response)
     enqueue_payload = {
@@ -204,14 +231,17 @@ async def upload_data(
         logger.warning("Failed to enqueue classification job: %s", exc)
 
     logger.info(
-        "uploadData ok: row=%s dist=%s ts=%s doc_id=%s images=%d",
+        "uploadData ok: row=%s dist=%s ts=%s doc_id=%s images=%d depth=%s",
         greenhouse_row, distanceFromRowStart, timestamp, doc_id, len(file_ids),
+        bool(depth_image_ids),
     )
     return {
-        "status":      "queued",
-        "document_id": str(doc_id),
-        "image_ids":   file_ids,
-        "timestamp":   timestamp,
+        "status":          "queued",
+        "document_id":     str(doc_id),
+        "image_ids":       file_ids,
+        "depth_image_ids": depth_image_ids,
+        "depth_enabled":   bool(depth_image_ids),
+        "timestamp":       timestamp,
     }
 
 
@@ -228,11 +258,16 @@ async def upload_classify(
     tomato_track: str = Form("remote"),
     flower_track: str = Form("remote"),
     images: list[UploadFile] = File(...),
+    depth_image: UploadFile | None = File(None),
+    fx: float | None = Form(None),
+    fy: float | None = Form(None),
+    depth_scale: float | None = Form(None),
 ):
     """
     Store images, trigger immediate (priority) classification via /classifyNow,
     then poll MongoDB until both classification fields are populated.
     Returns full classification results and annotated image GridFS IDs.
+    Optionally accepts a depth .npy file and camera intrinsics for volume estimation.
     """
     if len(images) < 1:
         raise HTTPException(status_code=400, detail="At least 1 image is required.")
@@ -249,8 +284,26 @@ async def upload_classify(
         logger.exception("GridFS upload failed")
         raise HTTPException(status_code=500, detail=f"Image storage failed: {exc}") from exc
 
+    # 2b. Store depth image to GridFS (if provided)
+    depth_image_ids: list[str] = []
+    depth_intrinsics: dict | None = None
+    if depth_image is not None:
+        try:
+            depth_image_ids = await _store_images_to_gridfs(
+                [depth_image], greenhouse_row, distanceFromRowStart, timestamp, "depth"
+            )
+        except Exception as exc:
+            logger.exception("GridFS depth upload failed")
+            raise HTTPException(status_code=500, detail=f"Depth image storage failed: {exc}") from exc
+        if fx is not None and fy is not None and depth_scale is not None:
+            depth_intrinsics = {"fx": fx, "fy": fy, "depth_scale": depth_scale}
+
     # 3. Create timestamp entry
-    await _create_timestamp_entry(doc_id, timestamp, file_ids)
+    await _create_timestamp_entry(
+        doc_id, timestamp, file_ids,
+        depth_image_ids=depth_image_ids,
+        depth_intrinsics=depth_intrinsics,
+    )
 
     # 4. Trigger immediate classification (skip queue)
     classify_payload = {
@@ -276,6 +329,7 @@ async def upload_classify(
         raise HTTPException(status_code=502, detail=f"Could not reach Classify Service: {exc}") from exc
 
     # 5. Poll MongoDB until both classification fields are written (max 120 s)
+    # Depth is written in the same $set as tomato/flower, so no extra polling needed.
     collection = get_db()["row_data"]
     for attempt in range(120):
         await asyncio.sleep(1)
@@ -295,6 +349,8 @@ async def upload_classify(
                 "flower_annotated_ids":      ts_entry.get("flower_annotated_images", []),
                 "tomato_classification":     ts_entry["tomato_classification"],
                 "flower_classification":     ts_entry["flower_classification"],
+                "depth_analysis":            ts_entry.get("depth_analysis"),
+                "depth_enabled":             ts_entry.get("depth_analysis") is not None,
             }
 
     raise HTTPException(
@@ -313,11 +369,15 @@ async def demo_classify(
     tomato_track: str = Form("remote"),
     flower_track: str = Form("remote"),
     images: list[UploadFile] = File(...),
+    depth_image: UploadFile | None = File(None),
+    fx: float | None = Form(None),
+    fy: float | None = Form(None),
+    depth_scale: float | None = Form(None),
 ):
     """
     Forward images directly to the Classify Service (/classifyDirect).
     Nothing is stored in MongoDB or GridFS.
-    Returns annotated images (base64) and classification summaries.
+    Returns annotated images (base64), classification summaries, and optional depth analysis.
     """
     if len(images) < 1:
         raise HTTPException(status_code=400, detail="At least one image is required.")
@@ -329,21 +389,37 @@ async def demo_classify(
         content_type = upload.content_type or "image/jpeg"
         files_data.append((upload.filename or "image.jpg", data, content_type))
 
+    multipart_files = [
+        ("images", (fname, data, ctype))
+        for fname, data, ctype in files_data
+    ]
+
+    form_data: dict[str, str] = {
+        "confidence_threshold": str(confidence_threshold),
+        "tomato_track": tomato_track,
+        "flower_track": flower_track,
+    }
+
+    # Forward depth image and intrinsics if provided
+    if depth_image is not None:
+        depth_data = await depth_image.read()
+        multipart_files.append(
+            ("depth_image", (depth_image.filename or "depth.npy", depth_data, "application/octet-stream"))
+        )
+        if fx is not None:
+            form_data["fx"] = str(fx)
+        if fy is not None:
+            form_data["fy"] = str(fy)
+        if depth_scale is not None:
+            form_data["depth_scale"] = str(depth_scale)
+
     # Forward to classify service as multipart
     try:
-        multipart_files = [
-            ("images", (fname, data, ctype))
-            for fname, data, ctype in files_data
-        ]
         async with httpx.AsyncClient(timeout=180) as client:
             resp = await client.post(
                 f"{CLASSIFY_SERVICE_URL}/classifyDirect",
                 files=multipart_files,
-                data={
-                    "confidence_threshold": str(confidence_threshold),
-                    "tomato_track": tomato_track,
-                    "flower_track": flower_track,
-                },
+                data=form_data,
             )
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:

@@ -137,6 +137,10 @@ async def get_summary_results():
     total_tomatoes: dict[str, int] = {"Ripe": 0, "Half_Ripe": 0, "Unripe": 0}
     total_flowers: dict[str, int] = {"0": 0, "1": 0, "2": 0}
 
+    # Depth-measured weight accumulators (only populated when depth_analysis is present)
+    measured_weight_by_class: dict[str, float] = {"Ripe": 0.0, "Half_Ripe": 0.0, "Unripe": 0.0}
+    measured_tomato_count: int = 0
+
     # Build per-row map: row_number → list of distance entries
     rows_map: dict[int, list[dict]] = {}
 
@@ -168,6 +172,16 @@ async def get_summary_results():
         for stage_key in ("0", "1", "2"):
             total_flowers[stage_key] += flower_stage_counts.get(stage_key, 0)
 
+        # Aggregate depth-measured weights (optional — present only when depth was uploaded)
+        depth_analysis = ts_entry.get("depth_analysis")
+        if depth_analysis and depth_analysis.get("depth_enabled"):
+            for tomato in depth_analysis.get("tomatoes", []):
+                w = tomato.get("weight_g")
+                if w is not None:
+                    label = tomato.get("label", "Unripe")
+                    measured_weight_by_class[label] = measured_weight_by_class.get(label, 0.0) + w
+                    measured_tomato_count += 1
+
         # Per-row distance entry
         distance_entry = {
             "distanceFromRowStart": distance,
@@ -189,12 +203,18 @@ async def get_summary_results():
         for row_num, entries in sorted(rows_map.items())
     ]
 
+    total_measured_weight_g = round(sum(measured_weight_by_class.values()), 2)
+
     return {
-        "total_tomatoes":      total_tomatoes,
-        "total_flowers":       total_flowers,
-        "total_tomato_count":  sum(total_tomatoes.values()),
-        "total_flower_count":  sum(total_flowers.values()),
-        "rows":                rows,
+        "total_tomatoes":            total_tomatoes,
+        "total_flowers":             total_flowers,
+        "total_tomato_count":        sum(total_tomatoes.values()),
+        "total_flower_count":        sum(total_flowers.values()),
+        "rows":                      rows,
+        # Depth-measured weight data (None / 0 when no depth scans have been done)
+        "measured_weight_by_class":  {k: round(v, 2) for k, v in measured_weight_by_class.items()},
+        "measured_tomato_count":     measured_tomato_count,
+        "total_measured_weight_g":   total_measured_weight_g,
     }
 
 
@@ -234,6 +254,7 @@ async def get_detailed_row_data(row: int = Query(..., description="Greenhouse ro
                 "timestamp":             _key_to_ts(ts_key),
                 "tomato_classification": ts_entry.get("tomato_classification"),
                 "flower_classification": ts_entry.get("flower_classification"),
+                "depth_analysis":        ts_entry.get("depth_analysis"),
                 "images": {
                     "original":         _image_urls(ts_entry.get("original_images", [])),
                     "tomato_annotated": _image_urls(ts_entry.get("tomato_annotated_images", [])),
@@ -246,6 +267,7 @@ async def get_detailed_row_data(row: int = Query(..., description="Greenhouse ro
             "latest_timestamp":      _key_to_ts(latest_key),
             "tomato_classification": latest_entry.get("tomato_classification"),
             "flower_classification": latest_entry.get("flower_classification"),
+            "depth_analysis":        latest_entry.get("depth_analysis"),
             "images": {
                 "original":         _image_urls(latest_entry.get("original_images", [])),
                 "tomato_annotated": _image_urls(latest_entry.get("tomato_annotated_images", [])),

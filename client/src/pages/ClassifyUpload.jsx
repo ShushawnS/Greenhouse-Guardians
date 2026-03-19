@@ -137,6 +137,15 @@ export default function ClassifyUpload() {
   const [error, setError] = useState(null)
   const fileInput = useRef(null)
 
+  // Depth sensor state
+  const [depthFile, setDepthFile] = useState(null)
+  const [fx, setFx] = useState('')
+  const [fy, setFy] = useState('')
+  const [depthScale, setDepthScale] = useState('0.001')
+  const depthFileInput = useRef(null)
+
+  const [depthDropdownOpen, setDepthDropdownOpen] = useState(false)
+
   const addFiles = useCallback((incoming) => {
     const imgs = Array.from(incoming).filter(f => f.type.startsWith('image/'))
     setFiles(prev => {
@@ -166,6 +175,13 @@ export default function ClassifyUpload() {
       fd.append('confidence_threshold', settings.confidenceThreshold)
       fd.append('tomato_track', settings.tomatoTrack ?? 'remote')
       fd.append('flower_track', settings.flowerTrack ?? 'remote')
+
+      if (depthFile) {
+        fd.append('depth_image', depthFile)
+        if (fx) fd.append('fx', fx)
+        if (fy) fd.append('fy', fy)
+        if (depthScale) fd.append('depth_scale', depthScale)
+      }
 
       let res
       if (demoMode) {
@@ -219,6 +235,7 @@ export default function ClassifyUpload() {
   const tomatoSummary = results?.data?.tomato_classification?.summary
   const flowerSummary = results?.data?.flower_classification
   const tracks = results?.data?.tracks
+  const depthAnalysis = results?.data?.depth_analysis
 
   const card = {
     background: C.bg1, border: `1px solid ${C.border}`,
@@ -344,6 +361,80 @@ export default function ClassifyUpload() {
           )}
         </div>
 
+        {/* Depth Sensor (optional) */}
+        <div style={card}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: C.t2, marginBottom: 14, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Depth Sensor{' '}
+            <span style={{ fontSize: 10, background: C.bg3, borderRadius: 4, padding: '2px 7px', color: C.t3, textTransform: 'none', letterSpacing: 0 }}>optional</span>
+          </div>
+
+          <Field label="Depth Map (.npy — uint16 RealSense depth array)">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => depthFileInput.current?.click()}
+                className="btn-press"
+                style={{
+                  ...inputStyle, cursor: 'pointer', textAlign: 'left',
+                  color: depthFile ? C.t1 : C.t3, width: 'auto',
+                }}
+              >
+                {depthFile ? depthFile.name : 'Choose .npy file…'}
+              </button>
+              {depthFile && (
+                <button
+                  type="button"
+                  onClick={() => setDepthFile(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.t3, padding: 0, display: 'flex', alignItems: 'center' }}
+                >
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              <input
+                ref={depthFileInput} type="file" accept=".npy" style={{ display: 'none' }}
+                onChange={e => { setDepthFile(e.target.files[0] || null); e.target.value = '' }}
+              />
+            </div>
+          </Field>
+
+          {depthFile && (
+            <div style={{ marginTop: 14 }}>
+              <div className="rg-3" style={{ gap: 12 }}>
+                <Field label="Focal Length fx (px)">
+                  <input
+                    type="number" step="any" value={fx}
+                    onChange={e => setFx(e.target.value)}
+                    placeholder="e.g. 618.39"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Focal Length fy (px)">
+                  <input
+                    type="number" step="any" value={fy}
+                    onChange={e => setFy(e.target.value)}
+                    placeholder="e.g. 618.52"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="Depth Scale (m / unit)">
+                  <input
+                    type="number" step="any" value={depthScale}
+                    onChange={e => setDepthScale(e.target.value)}
+                    placeholder="0.001"
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+              <p style={{ fontSize: 11, color: C.t3, marginTop: 10 }}>
+                fx / fy come from your camera calibration. Depth scale is typically 0.001 for RealSense (1 unit = 1 mm).
+                If intrinsics are omitted, only segmentation polygons are returned — no volume.
+              </p>
+            </div>
+          )}
+        </div>
+
         {error && (
           <div style={{
             background: C.redDim, border: `1px solid ${C.red}44`,
@@ -456,33 +547,110 @@ export default function ClassifyUpload() {
                 </div>
               )}
 
-              {[
-                { title: 'Tomatoes', annotated: tomatoImages },
-                { title: 'Flowers',  annotated: flowerImages },
-              ].map(({ title, annotated }) => (
-                <div key={title} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
-                  <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
-                    {originalImages.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
-                        <ImageGallery images={originalImages} emptyMessage="No images" />
-                      </div>
-                    )}
+              {/* Tomatoes card */}
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>Tomatoes</div>
+                <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
+                  {originalImages.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
-                      <ImageGallery images={annotated} emptyMessage="No annotated images" />
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
+                      <ImageGallery images={originalImages} emptyMessage="No images" />
                     </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
+                    <ImageGallery images={tomatoImages} emptyMessage="No annotated images" />
                   </div>
                 </div>
-              ))}
 
-              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px', opacity: 0.5 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: C.t2, marginBottom: 6 }}>
-                  Depth{' '}
-                  <span style={{ fontSize: 10, background: C.bg3, borderRadius: 4, padding: '2px 7px', color: C.t3 }}>coming soon</span>
+                {/* Depth dropdown — only shown when depth analysis ran */}
+                {depthAnalysis && (
+                  <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}` }}>
+                    <button
+                      type="button"
+                      onClick={() => setDepthDropdownOpen(v => !v)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '12px 0 0',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }}>
+                          Volume &amp; Weight
+                        </span>
+                        <span style={{ fontSize: 11, color: C.t3 }}>
+                          {depthAnalysis.depth_enabled
+                            ? `${depthAnalysis.total} tomato${depthAnalysis.total !== 1 ? 's' : ''} · ${(depthAnalysis.tomatoes.reduce((s, t) => s + (t.weight_g || 0), 0)).toFixed(2)} g total`
+                            : 'segmentation only'}
+                        </span>
+                      </div>
+                      <svg
+                        width="14" height="14" fill="none" stroke={C.t3} strokeWidth="2" viewBox="0 0 24 24"
+                        style={{ flexShrink: 0, transition: 'transform 0.18s ease', transform: depthDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {depthDropdownOpen && (
+                      <div style={{ paddingTop: 10 }}>
+                        {/* Column headers */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 60px 70px 70px 70px 70px',
+                          gap: 4, padding: '4px 8px',
+                          fontSize: 10, fontWeight: 500, color: C.t3,
+                          textTransform: 'uppercase', letterSpacing: '0.04em',
+                        }}>
+                          <span>Label</span>
+                          <span style={{ textAlign: 'right' }}>Conf</span>
+                          <span style={{ textAlign: 'right' }}>Depth</span>
+                          <span style={{ textAlign: 'right' }}>Radius</span>
+                          <span style={{ textAlign: 'right' }}>Volume</span>
+                          <span style={{ textAlign: 'right' }}>Weight</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                          {depthAnalysis.tomatoes.map(t => (
+                            <div key={t.id} style={{
+                              display: 'grid',
+                              gridTemplateColumns: '1fr 60px 70px 70px 70px 70px',
+                              gap: 4, padding: '6px 8px', borderRadius: 7,
+                              background: C.bg2, alignItems: 'center',
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: TOMATO_COLORS[t.label] || C.t3, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: C.t1 }}>#{t.id} {t.label}</span>
+                              </div>
+                              <span style={{ fontSize: 11, color: C.t2, textAlign: 'right' }} className="num">{(t.confidence * 100).toFixed(0)}%</span>
+                              <span style={{ fontSize: 11, color: C.t2, textAlign: 'right' }} className="num">{t.depth_mm != null ? `${t.depth_mm} mm` : '—'}</span>
+                              <span style={{ fontSize: 11, color: C.t2, textAlign: 'right' }} className="num">{t.radius_cm != null ? `${t.radius_cm} cm` : `${t.radius_px.toFixed(1)} px`}</span>
+                              <span style={{ fontSize: 11, color: C.t2, textAlign: 'right' }} className="num">{t.volume_cm3 != null ? `${t.volume_cm3} cm³` : '—'}</span>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: C.t1, textAlign: 'right' }} className="num">{t.weight_g != null ? `${t.weight_g} g` : '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Flowers card */}
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>Flowers</div>
+                <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
+                  {originalImages.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
+                      <ImageGallery images={originalImages} emptyMessage="No images" />
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
+                    <ImageGallery images={flowerImages} emptyMessage="No annotated images" />
+                  </div>
                 </div>
-                <p style={{ fontSize: 12, color: C.t3, textAlign: 'center', padding: '16px 0' }}>Depth analysis not yet available</p>
               </div>
           </>
         </div>

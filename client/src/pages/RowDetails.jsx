@@ -200,6 +200,7 @@ export default function RowDetails() {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [selectedTsIdx, setSelectedTsIdx] = useState(0)
   const [imageTab, setImageTab] = useState('tomatoes') // 'tomatoes' | 'flowers'
+  const [depthDropdownOpen, setDepthDropdownOpen] = useState(false)
 
   // Delete modal state: null | 'row' | 'all'
   const [deleteMode, setDeleteMode] = useState(null)
@@ -266,6 +267,8 @@ export default function RowDetails() {
   const originalImages        = activeData ? toImgList(activeData.images?.original,        'Original',  null,                              null)               : []
   const tomatoAnnotatedImages = activeData ? toImgList(activeData.images?.tomato_annotated, 'Annotated', activeData.tomato_classification, toTomatoDetections) : []
   const flowerAnnotatedImages = activeData ? toImgList(activeData.images?.flower_annotated, 'Annotated', activeData.flower_classification,  toFlowerDetections) : []
+
+  const depthAnalysis = activeData?.depth_analysis ?? null
 
   /* Selected point: counts — from the active timestamp */
   const selTomato = activeData?.tomato_classification?.summary?.by_class || {}
@@ -415,7 +418,7 @@ export default function RowDetails() {
           <RowVisualizer
             distances={distances}
             selectedIdx={selectedIdx}
-            onSelect={(i) => { setSelectedIdx(i); setSelectedTsIdx(0); setImageTab('tomatoes') }}
+            onSelect={(i) => { setSelectedIdx(i); setSelectedTsIdx(0); setImageTab('tomatoes'); setDepthDropdownOpen(false) }}
           />
 
           {/* ── Detail panel for selected point ── */}
@@ -455,7 +458,7 @@ export default function RowDetails() {
                           return (
                             <button
                               key={entry.timestamp}
-                              onClick={() => setSelectedTsIdx(i)}
+                              onClick={() => { setSelectedTsIdx(i); setDepthDropdownOpen(false) }}
                               className="btn-press"
                               style={{
                                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -565,6 +568,96 @@ export default function RowDetails() {
                       />
                     </div>
                   </div>
+
+                  {/* Volume & Weight dropdown — only for tomato tab with depth data */}
+                  {imageTab === 'tomatoes' && depthAnalysis && (
+                    <div style={{ marginTop: 16, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                      <button
+                        onClick={() => setDepthDropdownOpen(o => !o)}
+                        className="btn-press"
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 14px', background: C.bg2, border: 'none', cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }}>Volume & Weight</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 500, padding: '2px 7px', borderRadius: 10,
+                            background: depthAnalysis.depth_enabled ? C.greenDim : C.bg3,
+                            color: depthAnalysis.depth_enabled ? C.green : C.t3,
+                            border: `1px solid ${depthAnalysis.depth_enabled ? C.green + '33' : C.border}`,
+                          }}>
+                            {depthAnalysis.depth_enabled ? 'depth enabled' : 'segmentation only'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          {depthAnalysis.depth_enabled && (() => {
+                            const totalG = depthAnalysis.tomatoes?.reduce((s, t) => s + (t.weight_g ?? 0), 0) ?? 0
+                            return (
+                              <span style={{ fontSize: 11, color: C.t2 }} className="num">
+                                {depthAnalysis.total} tomato{depthAnalysis.total !== 1 ? 's' : ''} · {totalG.toFixed(1)}g total
+                              </span>
+                            )
+                          })()}
+                          <span style={{
+                            fontSize: 14, color: C.t3, lineHeight: 1,
+                            transform: depthDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s ease',
+                            display: 'inline-block',
+                          }}>▾</span>
+                        </div>
+                      </button>
+
+                      {depthDropdownOpen && (
+                        <div style={{ padding: '12px 14px', borderTop: `1px solid ${C.border}` }}>
+                          {!depthAnalysis.depth_enabled && (
+                            <p style={{ fontSize: 11, color: C.t3, marginBottom: 10 }}>
+                              Segmentation only — no depth intrinsics provided. Upload with fx, fy, and depth_scale for volume estimates.
+                            </p>
+                          )}
+                          {/* Header row */}
+                          <div style={{
+                            display: 'grid', gridTemplateColumns: '1fr 54px 64px 64px 70px 64px',
+                            gap: 4, marginBottom: 6, padding: '0 6px',
+                          }}>
+                            {['Label', 'Conf', 'Depth', 'Radius', 'Volume', 'Weight'].map(h => (
+                              <span key={h} style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</span>
+                            ))}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {(depthAnalysis.tomatoes || []).map((t, i) => (
+                              <div key={i} style={{
+                                display: 'grid', gridTemplateColumns: '1fr 54px 64px 64px 70px 64px',
+                                gap: 4, padding: '5px 6px', borderRadius: 6,
+                                background: i % 2 === 0 ? C.bg2 : 'transparent',
+                                alignItems: 'center',
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: TOMATO_COLORS[t.label] ?? C.t3, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, color: C.t1, fontWeight: 500 }}>{t.label}</span>
+                                </div>
+                                <span style={{ fontSize: 11, color: C.t2 }} className="num">{Math.round((t.confidence ?? 0) * 100)}%</span>
+                                <span style={{ fontSize: 11, color: C.t2 }} className="num">
+                                  {t.depth_mm != null ? `${Math.round(t.depth_mm)}mm` : '—'}
+                                </span>
+                                <span style={{ fontSize: 11, color: C.t2 }} className="num">
+                                  {t.radius_cm != null ? `${t.radius_cm.toFixed(2)}cm` : t.radius_px != null ? `${Math.round(t.radius_px)}px` : '—'}
+                                </span>
+                                <span style={{ fontSize: 11, color: C.t2 }} className="num">
+                                  {t.volume_cm3 != null ? `${t.volume_cm3.toFixed(2)}cm³` : '—'}
+                                </span>
+                                <span style={{ fontSize: 11, color: C.t2 }} className="num">
+                                  {t.weight_g != null ? `${t.weight_g.toFixed(2)}g` : '—'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

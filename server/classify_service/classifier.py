@@ -11,7 +11,9 @@ classify_depth()       – Stub; raises NotImplementedError (future work).
 
 import asyncio
 import base64
+import io
 import logging
+import math
 import os
 import sys
 
@@ -578,37 +580,159 @@ async def run_flower_classification(
 
 
 async def classify_depth(
-    rgb_image: bytes,
-    depth_image: bytes,
-    tomato_detections: list[dict],
+    rgb_image_bytes: bytes,
+    depth_npy_bytes: bytes | None = None,
+    fx: float | None = None,
+    fy: float | None = None,
+    depth_scale: float | None = None,
+    conf_threshold: float = 0.25,
 ) -> dict:
     """
-    [FUTURE] Depth analysis using Intel RealSense D435i.
+    Depth analysis using the segmentation API + optional RealSense depth data.
 
-    This function will:
-      1. Accept an RGB image, an aligned RealSense D435i depth image (16-bit
-         or float32 depth map), and the tomato bounding-box detections produced
-         by classify_tomatoes().
-      2. Map each RGB bounding box onto the aligned depth image to crop the
-         corresponding depth region for that tomato.
-      3. Sample depth values within the bounding box, filter outliers, and
-         compute an estimated tomato radius → volume (sphere approximation or
-         ellipsoid if width ≠ height).
-      4. Annotate the depth image with bounding boxes and volume labels.
-      5. Store the annotated depth image in GridFS with image_type="depth".
-      6. Return a depth_analysis dict structured per the MongoDB schema:
-         { "tomatoes": [{"bbox", "estimated_volume_cm3", "mean_depth_mm"}, ...] }
-         to be saved under timestamps.<ts>.depth_analysis in the row_data doc.
+    Calls the remote /api/segment endpoint to get polygon-based tomato detections
+    from the RGB image, fits a minimum enclosing circle to each polygon, and
+    optionally computes real-world radius + sphere volume using a depth array
+    and pinhole camera model.
+
+    Depth is fully optional: if depth_npy_bytes or camera intrinsics are absent,
+    only pixel-space circle geometry is returned (depth/volume fields are None).
 
     Args:
-        rgb_image:         Raw bytes of the RGB frame.
-        depth_image:       Raw bytes of the aligned D435i depth frame.
-        tomato_detections: Output of classify_tomatoes()["detections"].
+        rgb_image_bytes:  Raw JPEG bytes of the RGB frame.
+        depth_npy_bytes:  Raw bytes of a uint16 .npy depth array (H×W, units
+                          per depth_scale). None to skip depth analysis.
+        fx:               Camera focal length in pixels, x-axis.
+        fy:               Camera focal length in pixels, y-axis.
+        depth_scale:      Metres per depth unit (e.g. 0.001 for RealSense mm).
+        conf_threshold:   Minimum confidence to keep a detection.
 
     Returns:
-        dict: Depth analysis data per MongoDB schema.
-
-    Raises:
-        NotImplementedError: Always — depth analysis not yet implemented.
+        {
+            "tomatoes": [
+                {
+                    "id": int,
+                    "label": str,
+                    "confidence": float,
+                    "center_px": [float, float],
+                    "radius_px": float,
+                    "depth_mm":   float | None,
+                    "radius_cm":  float | None,
+                    "volume_cm3": float | None,
+                    "volume_mL":  float | None,
+                }
+            ],
+            "depth_enabled": bool,
+            "confidence_threshold": float,
+            "total": int,
+        }
     """
-    raise NotImplementedError("Depth analysis not yet implemented")
+    # ── Step 1: Call segmentation API ──────────────────────────────────────
+    client = get_http_client()
+    try:
+        response = await client.post(
+            f"{INFERENCE_SERVICE_URL}/api/segment",
+            files={"file": ("image.jpg", rgb_image_bytes, "image/jpeg")},
+            timeout=90.0,
+        )
+        response.raise_for_status()
+        seg_data = response.json()
+    except Exception as exc:
+        logger.error("Segmentation API call failed: %s", exc)
+        raise
+
+    raw_detections = seg_data.get("detections", [])
+
+    # ── Step 2: Client-side confidence filtering ────────────────────────────
+    detections = [d for d in raw_detections if d.get("confidence", 1.0) >= conf_threshold]
+    logger.info(
+        "classify_depth: %d raw detections → %d after conf≥%.2f filtering",
+        len(raw_detections), len(detections), conf_threshold,
+    )
+
+    # ── Step 3: Load depth array (optional) ────────────────────────────────
+    depth_array: np.ndarray | None = None
+    has_intrinsics = fx is not None and fy is not None and depth_scale is not None
+
+    if depth_npy_bytes is not None:
+        try:
+            depth_array = np.load(io.BytesIO(depth_npy_bytes), allow_pickle=False).astype(np.float32)
+            # Replace zeros (missing/invalid sensor readings) with NaN
+            depth_array[depth_array == 0] = np.nan
+        except Exception as exc:
+            logger.error("Failed to load depth .npy array: %s", exc)
+            raise ValueError(f"Invalid depth array: {exc}") from exc
+
+    depth_enabled = depth_array is not None and has_intrinsics
+
+    # ── Step 4: Per-detection circle fit + optional depth extraction ────────
+    results = []
+    for idx, det in enumerate(detections):
+        polygon = det.get("polygon", [])
+        if len(polygon) < 1:
+            logger.warning("classify_depth: detection %d has empty polygon, skipping", idx)
+            continue
+
+        pts = np.array(polygon, dtype=np.float32).reshape(-1, 1, 2)
+        (cx, cy), radius_px = cv2.minEnclosingCircle(pts)
+        cx, cy, radius_px = float(cx), float(cy), float(radius_px)
+
+        entry: dict = {
+            "id":         idx + 1,
+            "label":      det.get("label", "unknown"),
+            "confidence": round(det.get("confidence", 0.0), 4),
+            "center_px":  [round(cx, 2), round(cy, 2)],
+            "radius_px":  round(radius_px, 2),
+            "depth_mm":   None,
+            "radius_cm":  None,
+            "volume_cm3": None,
+            "volume_mL":  None,
+            "weight_g":   None,
+        }
+
+        if depth_enabled:
+            assert depth_array is not None  # narrowing for type checkers
+            h, w = depth_array.shape
+
+            # Circular mask centred on (cx, cy) with radius radius_px
+            y_grid, x_grid = np.ogrid[:h, :w]
+            mask = (x_grid - cx) ** 2 + (y_grid - cy) ** 2 <= radius_px ** 2
+
+            depth_vals = depth_array[mask]
+            valid = depth_vals[~np.isnan(depth_vals)]
+
+            if len(valid) > 0:
+                median_depth_units = float(np.median(valid))
+                depth_m = median_depth_units * depth_scale  # type: ignore[operator]
+                depth_mm = round(depth_m * 1000, 2)
+
+                # Pinhole model: real-world radius from pixel radius and depth
+                focal_px = (fx + fy) / 2.0  # type: ignore[operator]
+                radius_m = radius_px * depth_m / focal_px
+                radius_cm = round(radius_m * 100, 4)
+
+                # Sphere volume: V = (4/3)πr³, convert m³ → cm³ (* 1e6)
+                volume_cm3 = round((4.0 / 3.0) * math.pi * radius_m ** 3 * 1e6, 4)
+
+                entry["depth_mm"]   = depth_mm
+                entry["radius_cm"]  = radius_cm
+                entry["volume_cm3"] = volume_cm3
+                entry["volume_mL"]  = volume_cm3  # 1 cm³ ≈ 1 mL
+                entry["weight_g"]   = round(volume_cm3 * 0.95, 4)  # density 0.95 g/cm³
+            else:
+                logger.warning(
+                    "classify_depth: all depth values in mask for detection %d were NaN (occlusion?)", idx
+                )
+
+        results.append(entry)
+
+    logger.info(
+        "classify_depth complete: %d tomatoes  depth_enabled=%s",
+        len(results), depth_enabled,
+    )
+    return {
+        "tomatoes":            results,
+        "depth_enabled":       depth_enabled,
+        "confidence_threshold": conf_threshold,
+        "total":               len(results),
+    }

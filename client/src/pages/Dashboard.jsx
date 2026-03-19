@@ -38,11 +38,21 @@ export default function Dashboard() {
   if (!data) return null
 
   const ghConfig = getGreenhouseConfig()
-  const { total_tomatoes = {}, total_flowers = {}, total_tomato_count = 0, total_flower_count = 0, rows = [] } = data
+  const {
+    total_tomatoes = {}, total_flowers = {},
+    total_tomato_count = 0, total_flower_count = 0,
+    rows = [],
+    measured_weight_by_class = {}, measured_tomato_count = 0, total_measured_weight_g = 0,
+  } = data
   const { Ripe = 0, Half_Ripe = 0, Unripe = 0 } = total_tomatoes
+  const harvestReadyPct = total_tomato_count > 0 ? Math.round((Ripe / total_tomato_count) * 100) : 0
+
+  // Prefer depth-measured weight; fall back to 150g-per-tomato estimate
+  const hasMeasuredWeight = measured_tomato_count > 0
   const AVG_TOMATO_KG = 0.15
   const estimatedYieldKg = ((Ripe + Half_Ripe * 0.8 + Unripe * 0.5) * AVG_TOMATO_KG).toFixed(1)
-  const harvestReadyPct = total_tomato_count > 0 ? Math.round((Ripe / total_tomato_count) * 100) : 0
+  const measuredYieldKg = (total_measured_weight_g / 1000).toFixed(3)
+  const yieldDisplay = hasMeasuredWeight ? measuredYieldKg : estimatedYieldKg
 
   const tomatoData = [
     { name: 'Ripe',      count: Ripe,      fill: TOMATO_COLORS.Ripe },
@@ -89,16 +99,24 @@ export default function Dashboard() {
         </ChartCard>
 
         <StatCard
-          title="Estimated Yield"
+          title={hasMeasuredWeight ? 'Measured Yield' : 'Estimated Yield'}
           icon="🍅"
-          value={`${estimatedYieldKg} kg`}
-          subtitle="~150g per tomato · weighted by ripeness"
+          value={`${yieldDisplay} kg`}
+          subtitle={
+            hasMeasuredWeight
+              ? `${measured_tomato_count} tomato${measured_tomato_count !== 1 ? 's' : ''} measured · density 0.95 g/cm³`
+              : '~150g per tomato · weighted by ripeness'
+          }
           badge={harvestReadyPct > 0 ? {
             label: `${harvestReadyPct}% harvest-ready`,
             color: harvestReadyPct >= 60 ? C.green : harvestReadyPct >= 30 ? C.halfRipe : C.t3,
             bg: harvestReadyPct >= 60 ? C.greenDim : harvestReadyPct >= 30 ? C.halfRipeDim : C.bg3,
           } : undefined}
-          breakdown={[
+          breakdown={hasMeasuredWeight ? [
+            { label: 'Ripe',      count: +((measured_weight_by_class.Ripe      || 0) / 1000).toFixed(3), color: TOMATO_COLORS.Ripe },
+            { label: 'Half Ripe', count: +((measured_weight_by_class.Half_Ripe || 0) / 1000).toFixed(3), color: TOMATO_COLORS.Half_Ripe },
+            { label: 'Unripe',    count: +((measured_weight_by_class.Unripe    || 0) / 1000).toFixed(3), color: TOMATO_COLORS.Unripe },
+          ] : [
             { label: 'Ripe (×1.0)',      count: Math.round(Ripe * AVG_TOMATO_KG * 10) / 10,      color: TOMATO_COLORS.Ripe },
             { label: 'Half Ripe (×0.8)', count: Math.round(Half_Ripe * 0.8 * AVG_TOMATO_KG * 10) / 10, color: TOMATO_COLORS.Half_Ripe },
             { label: 'Unripe (×0.5)',    count: Math.round(Unripe * 0.5 * AVG_TOMATO_KG * 10) / 10,    color: TOMATO_COLORS.Unripe },

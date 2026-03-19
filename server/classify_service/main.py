@@ -150,15 +150,34 @@ async def _classify_and_save(
     conf_threshold: float = 0.25,
     tomato_track: str | None = None,
     flower_track: str | None = None,
+    depth_npy_bytes: bytes | None = None,
+    fx: float | None = None,
+    fy: float | None = None,
+    depth_scale: float | None = None,
 ) -> dict:
     """
-    Run both classifiers in parallel, persist annotated images to GridFS,
+    Run classifiers in parallel, persist annotated images to GridFS,
     and update the row_data document.  Returns the classification dicts.
+    Optionally runs depth analysis when depth_npy_bytes and intrinsics are provided.
     """
-    tomato_result, flower_result = await asyncio.gather(
+    has_depth = depth_npy_bytes is not None
+
+    coros: list = [
         classifier.run_tomato_classification(image_bytes_list, conf_threshold, track=tomato_track),
         classifier.run_flower_classification(image_bytes_list, conf_threshold, track=flower_track),
-    )
+    ]
+    if has_depth:
+        coros.append(classifier.classify_depth(
+            rgb_image_bytes=image_bytes_list[0],
+            depth_npy_bytes=depth_npy_bytes,
+            fx=fx, fy=fy, depth_scale=depth_scale,
+            conf_threshold=conf_threshold,
+        ))
+
+    gathered = await asyncio.gather(*coros)
+    tomato_result = gathered[0]
+    flower_result = gathered[1]
+    depth_result: dict | None = gathered[2] if has_depth else None
 
     tomato_ids, flower_ids = await asyncio.gather(
         _store_images_to_gridfs(
@@ -175,21 +194,26 @@ async def _classify_and_save(
     flower_data = {k: v for k, v in flower_result.items() if k != "annotated_image_bytes"}
 
     ts_key = f"timestamps.{make_ts_key(timestamp)}"
+    update_fields: dict = {
+        f"{ts_key}.tomato_classification":   tomato_data,
+        f"{ts_key}.flower_classification":   flower_data,
+        f"{ts_key}.tomato_annotated_images": tomato_ids,
+        f"{ts_key}.flower_annotated_images": flower_ids,
+    }
+    if depth_result is not None:
+        update_fields[f"{ts_key}.depth_analysis"] = depth_result
+
     await get_db()["row_data"].update_one(
         {"_id": ObjectId(document_id)},
-        {"$set": {
-            f"{ts_key}.tomato_classification":   tomato_data,
-            f"{ts_key}.flower_classification":   flower_data,
-            f"{ts_key}.tomato_annotated_images": tomato_ids,
-            f"{ts_key}.flower_annotated_images": flower_ids,
-        }},
+        {"$set": update_fields},
     )
 
     return {
-        "tomato_classification": tomato_data,
-        "flower_classification": flower_data,
+        "tomato_classification":     tomato_data,
+        "flower_classification":     flower_data,
         "tomato_annotated_image_ids": tomato_ids,
         "flower_annotated_image_ids": flower_ids,
+        "depth_analysis":            depth_result,
     }
 
 
@@ -230,6 +254,18 @@ async def classify_now(req: ClassifyNowRequest):
 
     image_bytes_list = await _fetch_images_from_gridfs(original_ids)
 
+    # Fetch depth image and intrinsics if present
+    depth_ids = ts_entry.get("depth_images", [])
+    depth_npy_bytes: bytes | None = None
+    if depth_ids:
+        depth_bytes_list = await _fetch_images_from_gridfs(depth_ids[:1])
+        depth_npy_bytes = depth_bytes_list[0] if depth_bytes_list else None
+
+    intrinsics = ts_entry.get("depth_intrinsics") or {}
+    fx: float | None = intrinsics.get("fx")
+    fy: float | None = intrinsics.get("fy")
+    depth_scale: float | None = intrinsics.get("depth_scale")
+
     t0 = time.perf_counter()
     results = await _classify_and_save(
         document_id=req.document_id,
@@ -240,6 +276,8 @@ async def classify_now(req: ClassifyNowRequest):
         conf_threshold=req.confidence_threshold,
         tomato_track=req.tomato_track,
         flower_track=req.flower_track,
+        depth_npy_bytes=depth_npy_bytes,
+        fx=fx, fy=fy, depth_scale=depth_scale,
     )
     total_ms = round((time.perf_counter() - t0) * 1000)
 
@@ -259,9 +297,14 @@ async def classify_direct(
     flower_conf: float = Form(0.25),
     tomato_track: str = Form("remote"),
     flower_track: str = Form("remote"),
+    depth_image: UploadFile | None = File(None),
+    fx: float | None = Form(None),
+    fy: float | None = Form(None),
+    depth_scale: float | None = Form(None),
 ):
     """
     Classify uploaded images without touching MongoDB.
+    Optionally accepts a depth .npy file and camera intrinsics for volume estimation.
     Track is selected per-request via tomato_track / flower_track form fields
     ("remote" or "local"), falling back to env var defaults.
     Returns a single flat result.
@@ -271,16 +314,34 @@ async def classify_direct(
 
     image_bytes_list = [await img.read() for img in images]
 
+    depth_npy_bytes: bytes | None = None
+    if depth_image is not None:
+        depth_npy_bytes = await depth_image.read()
+
+    has_depth = depth_npy_bytes is not None
+
     async def timed(coro):
         t0 = time.perf_counter()
         result = await coro
         return result, round((time.perf_counter() - t0) * 1000)
 
     try:
-        (tomato_result, t_ms), (flower_result, f_ms) = await asyncio.gather(
+        coros: list = [
             timed(classifier.run_tomato_classification(image_bytes_list, tomato_conf, track=tomato_track)),
             timed(classifier.run_flower_classification(image_bytes_list, flower_conf, track=flower_track)),
-        )
+        ]
+        if has_depth:
+            coros.append(timed(classifier.classify_depth(
+                rgb_image_bytes=image_bytes_list[0],
+                depth_npy_bytes=depth_npy_bytes,
+                fx=fx, fy=fy, depth_scale=depth_scale,
+                conf_threshold=confidence_threshold,
+            )))
+
+        gathered = await asyncio.gather(*coros)
+        (tomato_result, t_ms) = gathered[0]
+        (flower_result, f_ms) = gathered[1]
+        depth_result: dict | None = gathered[2][0] if has_depth else None
     except Exception as exc:
         logger.error("classifyDirect failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
@@ -302,6 +363,7 @@ async def classify_direct(
             "tomato": to_b64(tomato_result["annotated_image_bytes"]),
             "flower": to_b64(flower_result["annotated_image_bytes"]),
         },
+        "depth_analysis": depth_result,
         "timing_ms": {"tomato_model": t_ms, "flower_model": f_ms},
         "tracks": {
             "tomato": tomato_track,

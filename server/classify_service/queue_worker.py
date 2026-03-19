@@ -134,11 +134,35 @@ async def _process_job(job: dict) -> None:
 
         image_bytes_list = await _fetch_images_from_gridfs(original_ids)
 
-        # Run both classifiers in parallel (track selected via config)
-        tomato_result, flower_result = await asyncio.gather(
+        # Fetch depth image and intrinsics if stored
+        depth_ids = ts_entry.get("depth_images", [])
+        depth_npy_bytes: bytes | None = None
+        if depth_ids:
+            depth_bytes_list = await _fetch_images_from_gridfs(depth_ids[:1])
+            depth_npy_bytes = depth_bytes_list[0] if depth_bytes_list else None
+
+        intrinsics = ts_entry.get("depth_intrinsics") or {}
+        fx: float | None = intrinsics.get("fx")
+        fy: float | None = intrinsics.get("fy")
+        depth_scale: float | None = intrinsics.get("depth_scale")
+        has_depth = depth_npy_bytes is not None
+
+        # Run classifiers in parallel (depth classifier added when depth is present)
+        coros: list = [
             _classifier.run_tomato_classification(image_bytes_list),
             _classifier.run_flower_classification(image_bytes_list),
-        )
+        ]
+        if has_depth:
+            coros.append(_classifier.classify_depth(
+                rgb_image_bytes=image_bytes_list[0],
+                depth_npy_bytes=depth_npy_bytes,
+                fx=fx, fy=fy, depth_scale=depth_scale,
+            ))
+
+        gathered = await asyncio.gather(*coros)
+        tomato_result = gathered[0]
+        flower_result = gathered[1]
+        depth_result: dict | None = gathered[2] if has_depth else None
 
         # Store annotated images to GridFS
         tomato_ids, flower_ids = await asyncio.gather(
@@ -160,23 +184,30 @@ async def _process_job(job: dict) -> None:
 
         # Update MongoDB document
         ts_key = f"timestamps.{make_ts_key(timestamp)}"
+        update_fields: dict = {
+            f"{ts_key}.tomato_classification":    tomato_data,
+            f"{ts_key}.flower_classification":    flower_data,
+            f"{ts_key}.tomato_annotated_images":  [str(fid) for fid in tomato_ids],
+            f"{ts_key}.flower_annotated_images":  [str(fid) for fid in flower_ids],
+        }
+        if depth_result is not None:
+            update_fields[f"{ts_key}.depth_analysis"] = depth_result
+
         await collection.update_one(
             {"_id": ObjectId(doc_id_str)},
-            {"$set": {
-                f"{ts_key}.tomato_classification":    tomato_data,
-                f"{ts_key}.flower_classification":    flower_data,
-                f"{ts_key}.tomato_annotated_images":  [str(fid) for fid in tomato_ids],
-                f"{ts_key}.flower_annotated_images":  [str(fid) for fid in flower_ids],
-            }},
+            {"$set": update_fields},
         )
 
         # Update daily trend aggregate for this timestamp's date
         await update_daily_trend(timestamp[:10])
 
-        logger.info("Job complete: doc_id=%s ts=%s | tomatoes=%d flowers=%d",
-                    doc_id_str, timestamp,
-                    tomato_data["summary"]["total"],
-                    flower_data["total_flowers"])
+        logger.info(
+            "Job complete: doc_id=%s ts=%s | tomatoes=%d flowers=%d depth=%s",
+            doc_id_str, timestamp,
+            tomato_data["summary"]["total"],
+            flower_data["total_flowers"],
+            f"{depth_result['total']} detected" if depth_result else "skipped",
+        )
 
     except Exception:
         logger.exception("Error processing job doc_id=%s ts=%s", doc_id_str, timestamp)
