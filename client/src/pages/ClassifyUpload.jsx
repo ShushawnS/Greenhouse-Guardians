@@ -183,19 +183,30 @@ export default function ClassifyUpload() {
   }
 
   let originalImages = [], tomatoImages = [], flowerImages = []
+  let demoSides = null   // { remote: {...}, local: {...} } for demo mode
+
   if (results) {
     const { mode, data } = results
     if (mode === 'demo') {
-      tomatoImages = (data.annotated_images?.tomato || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`,
-        label: `Image ${i + 1}`,
-        detections: perImageTomatoDetections(data.tomato_classification, i),
-      }))
-      flowerImages = (data.annotated_images?.flower || []).map((b64, i) => ({
-        src: `data:image/jpeg;base64,${b64}`,
-        label: `Image ${i + 1}`,
-        detections: perImageFlowerDetections(data.flower_classification, i),
-      }))
+      const buildSide = (side) => ({
+        tomatoImages: (side.annotated_images?.tomato || []).map((b64, i) => ({
+          src: `data:image/jpeg;base64,${b64}`,
+          label: `Image ${i + 1}`,
+          detections: perImageTomatoDetections(side.tomato_classification, i),
+        })),
+        flowerImages: (side.annotated_images?.flower || []).map((b64, i) => ({
+          src: `data:image/jpeg;base64,${b64}`,
+          label: `Image ${i + 1}`,
+          detections: perImageFlowerDetections(side.flower_classification, i),
+        })),
+        tomatoSummary: side.tomato_classification?.summary,
+        flowerSummary: side.flower_classification,
+        timing: side.timing_ms,
+      })
+      demoSides = {
+        remote: buildSide(data.remote || {}),
+        local:  buildSide(data.local  || {}),
+      }
     } else {
       originalImages = (data.original_image_ids || []).map((id, i) => ({
         src: getImageUrl(id), label: `Image ${i + 1}`, detections: [],
@@ -387,87 +398,173 @@ export default function ClassifyUpload() {
             <span style={{ fontSize: 13, fontWeight: 500, color: C.t1 }}>Classification Results</span>
           </div>
 
-          {/* Summary cards */}
-          {tomatoSummary && (
-            <div className="rg-2" style={{ gap: 12 }}>
-              {/* Tomato summary */}
-              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
-                <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Tomato Summary</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
-                  {tomatoSummary.total} detected
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                  {[
-                    { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      count: tomatoSummary.by_class?.Ripe || 0 },
-                    { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, count: tomatoSummary.by_class?.Half_Ripe || 0 },
-                    { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    count: tomatoSummary.by_class?.Unripe || 0 },
-                  ].map(({ label, color, count }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* ── Demo mode: 4-model comparison ── */}
+          {demoSides && (
+            <>
+              {[
+                { key: 'tomato', title: 'Tomato Detection' },
+                { key: 'flower', title: 'Flower Detection' },
+              ].map(({ key, title }) => (
+                <div key={key} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    {[
+                      { label: 'Remote — HF Space', side: demoSides.remote },
+                      { label: 'Local — YOLOv8',    side: demoSides.local  },
+                    ].map(({ label, side }) => {
+                      const imgs        = key === 'tomato' ? side.tomatoImages : side.flowerImages
+                      const summary     = key === 'tomato' ? side.tomatoSummary : null
+                      const flowerSum   = key === 'flower' ? side.flowerSummary : null
+                      const timingMs    = key === 'tomato' ? side.timing?.tomato_model : side.timing?.flower_model
 
-              {/* Flower summary */}
-              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
-                <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Flower Summary</div>
-                <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
-                  {flowerSummary?.total_flowers || 0} detected
+                      return (
+                        <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {/* Column header */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 11, fontWeight: 500, color: C.t2 }}>{label}</span>
+                            {timingMs != null && (
+                              <span style={{
+                                fontSize: 10, color: C.t3,
+                                background: C.bg3, borderRadius: 4, padding: '2px 7px',
+                              }} className="num">
+                                {timingMs} ms
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Annotated images */}
+                          <ImageGallery images={imgs} emptyMessage="No annotated images" />
+
+                          {/* Summary */}
+                          {summary && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                              <span style={{ fontSize: 11, color: C.t3 }} className="num">
+                                {summary.total} detected
+                              </span>
+                              {[
+                                { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      count: summary.by_class?.Ripe      || 0 },
+                                { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, count: summary.by_class?.Half_Ripe || 0 },
+                                { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    count: summary.by_class?.Unripe    || 0 },
+                              ].map(({ label: l, color, count }) => (
+                                <div key={l} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 11, color: C.t2 }}>{l}</span>
+                                  </div>
+                                  <span style={{ fontSize: 11, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {flowerSum && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+                              <span style={{ fontSize: 11, color: C.t3 }} className="num">
+                                {flowerSum.total_flowers || 0} detected
+                              </span>
+                              {[
+                                { label: FLOWER_STAGE_LABELS['0'], color: FLOWER_COLORS['0'], count: flowerSum.stage_counts?.['0'] || 0 },
+                                { label: FLOWER_STAGE_LABELS['1'], color: FLOWER_COLORS['1'], count: flowerSum.stage_counts?.['1'] || 0 },
+                                { label: FLOWER_STAGE_LABELS['2'], color: FLOWER_COLORS['2'], count: flowerSum.stage_counts?.['2'] || 0 },
+                              ].map(({ label: l, color, count }) => (
+                                <div key={l} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 11, color: C.t2 }}>{l}</span>
+                                  </div>
+                                  <span style={{ fontSize: 11, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                  {[
-                    { label: FLOWER_STAGE_LABELS['0'], color: FLOWER_COLORS['0'], count: flowerSummary?.stage_counts?.['0'] || 0 },
-                    { label: FLOWER_STAGE_LABELS['1'], color: FLOWER_COLORS['1'], count: flowerSummary?.stage_counts?.['1'] || 0 },
-                    { label: FLOWER_STAGE_LABELS['2'], color: FLOWER_COLORS['2'], count: flowerSummary?.stage_counts?.['2'] || 0 },
-                  ].map(({ label, color, count }) => (
-                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+              ))}
+            </>
           )}
 
-          {/* Annotated image panels */}
-          {[
-            { title: 'Tomatoes', annotated: tomatoImages },
-            { title: 'Flowers',  annotated: flowerImages },
-          ].map(({ title, annotated }) => (
-            <div key={title} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
-              <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
-                {originalImages.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
-                    <ImageGallery images={originalImages} emptyMessage="No images" />
+          {/* ── Upload mode: existing single-result view ── */}
+          {!demoSides && (
+            <>
+              {tomatoSummary && (
+                <div className="rg-2" style={{ gap: 12 }}>
+                  <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                    <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Tomato Summary</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
+                      {tomatoSummary.total} detected
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                      {[
+                        { label: 'Ripe',      color: TOMATO_COLORS.Ripe,      count: tomatoSummary.by_class?.Ripe || 0 },
+                        { label: 'Half Ripe', color: TOMATO_COLORS.Half_Ripe, count: tomatoSummary.by_class?.Half_Ripe || 0 },
+                        { label: 'Unripe',    color: TOMATO_COLORS.Unripe,    count: tomatoSummary.by_class?.Unripe || 0 },
+                      ].map(({ label, color, count }) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                )}
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
-                  <ImageGallery images={annotated} emptyMessage="No annotated images" />
+                  <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                    <div style={{ fontSize: 11, color: C.t2, marginBottom: 8 }}>Flower Summary</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: C.t1, letterSpacing: '-0.4px', marginBottom: 12 }} className="num">
+                      {flowerSummary?.total_flowers || 0} detected
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                      {[
+                        { label: FLOWER_STAGE_LABELS['0'], color: FLOWER_COLORS['0'], count: flowerSummary?.stage_counts?.['0'] || 0 },
+                        { label: FLOWER_STAGE_LABELS['1'], color: FLOWER_COLORS['1'], count: flowerSummary?.stage_counts?.['1'] || 0 },
+                        { label: FLOWER_STAGE_LABELS['2'], color: FLOWER_COLORS['2'], count: flowerSummary?.stage_counts?.['2'] || 0 },
+                      ].map(({ label, color, count }) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, color: C.t2 }}>{label}</span>
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }} className="num">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              )}
 
-          {/* Depth — coming soon */}
-          <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px', opacity: 0.5 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: C.t2, marginBottom: 6 }}>
-              Depth{' '}
-              <span style={{ fontSize: 10, background: C.bg3, borderRadius: 4, padding: '2px 7px', color: C.t3 }}>coming soon</span>
-            </div>
-            <p style={{ fontSize: 12, color: C.t3, textAlign: 'center', padding: '16px 0' }}>Depth analysis not yet available</p>
-          </div>
+              {[
+                { title: 'Tomatoes', annotated: tomatoImages },
+                { title: 'Flowers',  annotated: flowerImages },
+              ].map(({ title, annotated }) => (
+                <div key={title} style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.t1, marginBottom: 14 }}>{title}</div>
+                  <div className={originalImages.length > 0 ? 'rg-2' : ''} style={{ gap: 20 }}>
+                    {originalImages.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Original</div>
+                        <ImageGallery images={originalImages} emptyMessage="No images" />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 500, color: C.t3, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Annotated</div>
+                      <ImageGallery images={annotated} emptyMessage="No annotated images" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div style={{ background: C.bg1, border: `1px solid ${C.border}`, borderRadius: 10, padding: '18px 20px', opacity: 0.5 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: C.t2, marginBottom: 6 }}>
+                  Depth{' '}
+                  <span style={{ fontSize: 10, background: C.bg3, borderRadius: 4, padding: '2px 7px', color: C.t3 }}>coming soon</span>
+                </div>
+                <p style={{ fontSize: 12, color: C.t3, textAlign: 'center', padding: '16px 0' }}>Depth analysis not yet available</p>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -14,6 +14,12 @@ UPLOAD_SERVICE_URL = os.getenv("UPLOAD_SERVICE_URL", "http://localhost:8001")
 CLASSIFY_SERVICE_URL = os.getenv("CLASSIFY_SERVICE_URL", "http://localhost:8002")
 RESULTS_SERVICE_URL = os.getenv("RESULTS_SERVICE_URL", "http://localhost:8003")
 
+# External ML inference service (used for demo/classifyDirect path)
+INFERENCE_SERVICE_URL = os.getenv(
+    "INFERENCE_SERVICE_URL",
+    "https://deenp03-guardians-of-the-greenhouse-inference.hf.space",
+)
+
 # Model paths (local cache)
 MODELS_DIR = os.getenv(
     "MODELS_DIR",

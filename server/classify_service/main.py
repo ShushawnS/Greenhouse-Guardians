@@ -15,6 +15,7 @@ import io
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 
 from bson import ObjectId
@@ -225,6 +226,7 @@ async def classify_now(req: ClassifyNowRequest):
 
     image_bytes_list = await _fetch_images_from_gridfs(original_ids)
 
+    t0 = time.perf_counter()
     results = await _classify_and_save(
         document_id=req.document_id,
         greenhouse_row=req.greenhouse_row,
@@ -233,56 +235,85 @@ async def classify_now(req: ClassifyNowRequest):
         image_bytes_list=image_bytes_list,
         conf_threshold=req.confidence_threshold,
     )
+    total_ms = round((time.perf_counter() - t0) * 1000)
 
     # Update daily trend aggregate for this timestamp's date
     date_str = req.timestamp[:10]
     await update_daily_trend(date_str)
 
-    logger.info("classifyNow complete: doc=%s ts=%s", req.document_id, req.timestamp)
-    return {"status": "complete", **results}
+    logger.info("classifyNow complete: doc=%s ts=%s (%dms)", req.document_id, req.timestamp, total_ms)
+    return {"status": "complete", **results, "timing_ms": {"total": total_ms}}
 
 
 @app.post("/classifyDirect")
 async def classify_direct(
     images: list[UploadFile] = File(...),
     confidence_threshold: float = Form(0.25),
+    tomato_conf: float = Form(0.30),
+    flower_conf: float = Form(0.25),
 ):
     """
     Classify uploaded images without touching MongoDB.
-    Returns base64-encoded annotated images and classification summaries.
+    Runs all four models in parallel — remote (HF Space SAM3/YOLOv8) and local (YOLOv8).
+    Returns base64-encoded annotated images, classification summaries, and per-model timing.
     """
     if len(images) < 1:
         raise HTTPException(status_code=400, detail="At least one image is required.")
 
     image_bytes_list = [await img.read() for img in images]
 
-    tomato_result, flower_result = await asyncio.gather(
-        classifier.classify_tomatoes(image_bytes_list, confidence_threshold),
-        classifier.classify_flowers(image_bytes_list, confidence_threshold),
-    )
+    async def timed(coro):
+        t0 = time.perf_counter()
+        result = await coro
+        return result, round((time.perf_counter() - t0) * 1000)
 
-    tomato_b64 = [
-        base64.b64encode(b).decode("utf-8")
-        for b in tomato_result["annotated_image_bytes"]
-    ]
-    flower_b64 = [
-        base64.b64encode(b).decode("utf-8")
-        for b in flower_result["annotated_image_bytes"]
-    ]
+    try:
+        (remote_tomato, rt_ms), (remote_flower, rf_ms), (local_tomato, lt_ms), (local_flower, lf_ms) = \
+            await asyncio.gather(
+                timed(classifier.classify_tomatoes_remote(image_bytes_list, tomato_conf)),
+                timed(classifier.classify_flowers_remote(image_bytes_list, flower_conf)),
+                timed(classifier.classify_tomatoes(image_bytes_list, confidence_threshold)),
+                timed(classifier.classify_flowers(image_bytes_list, confidence_threshold)),
+            )
+    except Exception as exc:
+        logger.error("classifyDirect failed: %s", exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    def to_b64(byte_list):
+        return [base64.b64encode(b).decode("utf-8") for b in byte_list]
 
     return {
-        "tomato_classification": {
-            "images": tomato_result["images"],
-            "summary": tomato_result["summary"],
+        "remote": {
+            "tomato_classification": {
+                "images": remote_tomato["images"],
+                "summary": remote_tomato["summary"],
+            },
+            "flower_classification": {
+                "images": remote_flower["images"],
+                "total_flowers": remote_flower["total_flowers"],
+                "stage_counts": remote_flower["stage_counts"],
+            },
+            "annotated_images": {
+                "tomato": to_b64(remote_tomato["annotated_image_bytes"]),
+                "flower": to_b64(remote_flower["annotated_image_bytes"]),
+            },
+            "timing_ms": {"tomato_model": rt_ms, "flower_model": rf_ms},
         },
-        "flower_classification": {
-            "images": flower_result["images"],
-            "total_flowers": flower_result["total_flowers"],
-            "stage_counts": flower_result["stage_counts"],
-        },
-        "annotated_images": {
-            "tomato": tomato_b64,
-            "flower": flower_b64,
+        "local": {
+            "tomato_classification": {
+                "images": local_tomato["images"],
+                "summary": local_tomato["summary"],
+            },
+            "flower_classification": {
+                "images": local_flower["images"],
+                "total_flowers": local_flower["total_flowers"],
+                "stage_counts": local_flower["stage_counts"],
+            },
+            "annotated_images": {
+                "tomato": to_b64(local_tomato["annotated_image_bytes"]),
+                "flower": to_b64(local_flower["annotated_image_bytes"]),
+            },
+            "timing_ms": {"tomato_model": lt_ms, "flower_model": lf_ms},
         },
     }
 
