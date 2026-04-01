@@ -589,11 +589,17 @@ async def classify_depth(
 
     if depth_npy_bytes is not None:
         try:
-            depth_array = np.load(io.BytesIO(depth_npy_bytes), allow_pickle=False).astype(np.float32)
+            # Detect format by magic bytes: PNG starts with \x89PNG, NPY with \x93NUMPY
+            if depth_npy_bytes[:4] == b'\x89PNG':
+                from PIL import Image
+                img = Image.open(io.BytesIO(depth_npy_bytes))
+                depth_array = np.array(img).astype(np.float32)
+            else:
+                depth_array = np.load(io.BytesIO(depth_npy_bytes), allow_pickle=False).astype(np.float32)
             # Replace zeros (missing/invalid sensor readings) with NaN
             depth_array[depth_array == 0] = np.nan
         except Exception as exc:
-            logger.error("Failed to load depth .npy array: %s", exc)
+            logger.error("Failed to load depth array: %s", exc)
             raise ValueError(f"Invalid depth array: {exc}") from exc
 
     depth_enabled = depth_array is not None and has_intrinsics

@@ -10,7 +10,15 @@
       "Bash(curl -s http://localhost:8003/getSummaryResults | python3 -c \"\nimport json, sys\nd = json.load\\(sys.stdin\\)\nprint\\('measured_tomato_count  :', d.get\\('measured_tomato_count', 'MISSING'\\)\\)\nprint\\('total_measured_weight_g:', d.get\\('total_measured_weight_g', 'MISSING'\\)\\)\nprint\\('total_tomato_count     :', d['total_tomato_count']\\)\n\")",
       "Bash(curl -s http://localhost:8003/health 2>/dev/null && echo \"results ok\" || echo \"results down\"\ncurl -s http://localhost:8001/health 2>/dev/null && echo \"upload ok\" || echo \"upload down\"  \ncurl -s http://localhost:8002/health 2>/dev/null && echo \"classify ok\" || echo \"classify down\")",
       "WebFetch(domain:greenhouseguardiansorg-greenhouseguardians.hf.space)",
-      "WebFetch(domain:greenhouseguardians.netlify.app)"
+      "WebFetch(domain:greenhouseguardians.netlify.app)",
+      "Bash(find /Users/kmehta/workspace/capstone-repos/Greenhouse-Guardians/server/images -name *depth* -o -name *.npy)",
+      "Bash(curl -s http://localhost:8001/health)",
+      "Bash(curl -s http://localhost:8002/health)",
+      "Bash(lsof -ti:8001 -ti:8002)",
+      "Bash(curl -s http://localhost:8001/)",
+      "Bash(curl -s http://localhost:8002/)",
+      "Bash(curl -s -X POST http://localhost:8001/demoClassify -F \"images=@rgb.jpg\" -F \"depth_image=@depth_raw.npy\" -F \"fx=615.0\" -F \"fy=615.0\" -F \"depth_scale=0.001\" -F \"confidence_threshold=0.25\")",
+      "Bash(curl -s -X POST http://localhost:8001/demoClassify -F \"images=@rgb.jpg\" -F \"depth_image=@depth_raw.png\" -F \"fx=615.0\" -F \"fy=615.0\" -F \"depth_scale=0.001\" -F \"confidence_threshold=0.25\")"
     ]
   }
 }
