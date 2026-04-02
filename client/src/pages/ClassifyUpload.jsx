@@ -20,9 +20,19 @@ function normalizeFlowerDetections(flowers = []) {
   }))
 }
 
-function perImageTomatoDetections(classification, imageIndex) {
+function perImageTomatoDetections(classification, imageIndex, depthTomatoes) {
   const imgData = classification?.images?.[imageIndex]
-  return normalizeTomatoDetections(imgData?.detections ?? [])
+  const detections = normalizeTomatoDetections(imgData?.detections ?? [])
+  if (!depthTomatoes?.length) return detections
+  return detections.map(det => {
+    const { x1, y1, x2, y2 } = det.bbox
+    const matched = depthTomatoes.find(t => {
+      const [cx, cy] = t.center_px || []
+      return cx != null && cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2
+    })
+    if (!matched) return det
+    return { ...det, depth_mm: matched.depth_mm, radius_cm: matched.radius_cm, weight_g: matched.weight_g }
+  })
 }
 
 function perImageFlowerDetections(classification, imageIndex) {
@@ -214,9 +224,11 @@ export default function ClassifyUpload() {
     originalImages = Array.from({ length: count }, (_, i) => ({
       src: toSrc(i), label: `Image ${i + 1}`, detections: [],
     }))
+    const depthTomatoes = data.depth_analysis?.tomatoes ?? []
     tomatoImages = Array.from({ length: count }, (_, i) => ({
       src: toSrc(i), label: `Image ${i + 1}`,
-      detections: perImageTomatoDetections(data.tomato_classification, i),
+      // depth analysis only covers the first image, so only pass for i===0
+      detections: perImageTomatoDetections(data.tomato_classification, i, i === 0 ? depthTomatoes : []),
     }))
     flowerImages = Array.from({ length: count }, (_, i) => ({
       src: toSrc(i), label: `Image ${i + 1}`,

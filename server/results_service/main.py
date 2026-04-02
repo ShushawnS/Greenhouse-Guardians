@@ -313,6 +313,7 @@ async def get_all_data():
                 "timestamp": _key_to_ts(ts_key),
                 "tomato_classification": ts_entry.get("tomato_classification"),
                 "flower_classification": ts_entry.get("flower_classification"),
+                "depth_analysis":        ts_entry.get("depth_analysis"),
                 "images": {
                     "original": _image_urls(ts_entry.get("original_images", [])),
                 },

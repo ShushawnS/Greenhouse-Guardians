@@ -48,6 +48,12 @@ export default function AnnotatedImage({ src, alt = '', detections = [], imgStyl
       />
       {dims && detections.map((det, i) => {
         const { x1, y1, x2, y2 } = det.bbox
+        const color = BBOX_COLORS[det.label] || '#ffffff'
+        const hasDepth = det.depth_mm != null || det.weight_g != null
+        const depthParts = []
+        if (det.depth_mm != null) depthParts.push(`${det.depth_mm}mm`)
+        if (det.weight_g != null) depthParts.push(`~${det.weight_g}g`)
+
         return (
           <div
             key={i}
@@ -57,12 +63,30 @@ export default function AnnotatedImage({ src, alt = '', detections = [], imgStyl
               top:       y1 * dims.scaleY,
               width:     (x2 - x1) * dims.scaleX,
               height:    (y2 - y1) * dims.scaleY,
-              border:    `2px solid ${BBOX_COLORS[det.label] || '#ffffff'}`,
+              border:    `2px solid ${color}`,
               borderRadius: 2,
               pointerEvents: 'none',
               boxSizing: 'border-box',
             }}
-          />
+          >
+            <div style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: -2,
+              background: color,
+              color: '#fff',
+              fontSize: 8,
+              fontWeight: 600,
+              lineHeight: 1.4,
+              padding: '1px 3px',
+              borderRadius: '2px 2px 0 0',
+              whiteSpace: 'nowrap',
+              fontFamily: 'monospace',
+            }}>
+              {det.label} {Math.round((det.confidence || 0) * 100)}%
+              {hasDepth && <><br />{depthParts.join(' · ')}</>}
+            </div>
+          </div>
         )
       })}
     </div>

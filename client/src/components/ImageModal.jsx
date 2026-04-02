@@ -95,6 +95,15 @@ export default function ImageModal({ image, onClose }) {
                   >
                     <span className="font-semibold">{det.label}</span>
                     <span className="text-white/60 ml-2">{(det.confidence * 100).toFixed(1)}%</span>
+                    {det.depth_mm != null && (
+                      <span className="text-white/50 ml-2">{det.depth_mm} mm</span>
+                    )}
+                    {det.radius_cm != null && (
+                      <span className="text-white/50 ml-2">r={det.radius_cm} cm</span>
+                    )}
+                    {det.weight_g != null && (
+                      <span className="text-white/50 ml-2">~{det.weight_g} g</span>
+                    )}
                   </div>
                 )}
               </div>

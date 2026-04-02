@@ -46,6 +46,7 @@ function flattenEntries(documents) {
         timestamp: run.timestamp,
         tomato_classification: run.tomato_classification,
         flower_classification: run.flower_classification,
+        depth_analysis: run.depth_analysis,
         images: run.images,
       })
     }
@@ -146,6 +147,7 @@ function TimelineEntry({ entry, isNew }) {
 
   const tc = entry.tomato_classification
   const fc = entry.flower_classification
+  const da = entry.depth_analysis ?? null
   const bc = tc?.summary?.by_class ?? {}
   const sc = fc?.stage_counts ?? {}
   const tomatoTotal = tc?.summary?.total ?? 0
@@ -159,10 +161,22 @@ function TimelineEntry({ entry, isNew }) {
   ).toFixed(2)
 
   /* Build per-image detection lists for the modal */
+  const depthTomatoes = entry.depth_analysis?.tomatoes ?? []
   function tomatoDetectionsForImage(i) {
-    return (tc?.images?.[i]?.detections || []).map(d => ({
+    const dets = (tc?.images?.[i]?.detections || []).map(d => ({
       bbox: d.bbox, label: d.label, confidence: d.confidence,
     }))
+    // depth analysis only covers the first image; match by center_px falling inside bbox
+    if (i !== 0 || !depthTomatoes.length) return dets
+    return dets.map(det => {
+      const { x1, y1, x2, y2 } = det.bbox
+      const matched = depthTomatoes.find(t => {
+        const [cx, cy] = t.center_px || []
+        return cx != null && cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2
+      })
+      if (!matched) return det
+      return { ...det, depth_mm: matched.depth_mm, radius_cm: matched.radius_cm, weight_g: matched.weight_g }
+    })
   }
 
   function flowerDetectionsForImage(i) {
@@ -267,6 +281,73 @@ function TimelineEntry({ entry, isNew }) {
                         { color: C.flower2, value: sc['2'] || 0 },
                       ]}
                     />
+                  </div>
+                </div>
+              )}
+
+              {/* ── Depth analysis table ── */}
+              {da && (
+                <div style={{ marginTop: 4, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: C.t2 }}>Depth Analysis</span>
+                    <span style={{ fontSize: 10, color: C.t3 }}>
+                      {da.depth_enabled
+                        ? `${da.total} tomato${da.total !== 1 ? 's' : ''} · ${da.tomatoes.reduce((s, t) => s + (t.weight_g || 0), 0).toFixed(1)} g total`
+                        : 'segmentation only'}
+                    </span>
+                  </div>
+                  {/* Column headers */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: da.depth_enabled ? '1fr 48px 60px 60px 60px 60px' : '1fr 48px 55px 55px',
+                    gap: 4, padding: '3px 6px',
+                    fontSize: 9, fontWeight: 500, color: C.t3,
+                    textTransform: 'uppercase', letterSpacing: '0.04em',
+                  }}>
+                    <span>Label</span>
+                    <span style={{ textAlign: 'right' }}>Conf</span>
+                    {da.depth_enabled ? (
+                      <>
+                        <span style={{ textAlign: 'right' }}>Depth</span>
+                        <span style={{ textAlign: 'right' }}>Radius</span>
+                        <span style={{ textAlign: 'right' }}>Vol</span>
+                        <span style={{ textAlign: 'right' }}>Weight</span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ textAlign: 'right' }}>Ctr X</span>
+                        <span style={{ textAlign: 'right' }}>Ctr Y</span>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                    {da.tomatoes.map(t => (
+                      <div key={t.id} style={{
+                        display: 'grid',
+                        gridTemplateColumns: da.depth_enabled ? '1fr 48px 60px 60px 60px 60px' : '1fr 48px 55px 55px',
+                        gap: 4, padding: '5px 6px', borderRadius: 6,
+                        background: C.bg2, alignItems: 'center',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: TOMATO_COLORS[t.label] || C.t3, flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, color: C.t1 }}>#{t.id} {t.label}</span>
+                        </div>
+                        <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{(t.confidence * 100).toFixed(0)}%</span>
+                        {da.depth_enabled ? (
+                          <>
+                            <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{t.depth_mm != null ? `${t.depth_mm}mm` : '—'}</span>
+                            <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{t.radius_cm != null ? `${t.radius_cm}cm` : `${t.radius_px?.toFixed(1)}px`}</span>
+                            <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{t.volume_cm3 != null ? `${t.volume_cm3}` : '—'}</span>
+                            <span style={{ fontSize: 11, fontWeight: 500, color: C.t1, textAlign: 'right' }} className="num">{t.weight_g != null ? `${t.weight_g}g` : '—'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{t.center_px?.[0]?.toFixed(0) ?? '—'}</span>
+                            <span style={{ fontSize: 10, color: C.t2, textAlign: 'right' }} className="num">{t.center_px?.[1]?.toFixed(0) ?? '—'}</span>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

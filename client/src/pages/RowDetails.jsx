@@ -16,10 +16,20 @@ function formatTs(ts) {
   })
 }
 
-function toTomatoDetections(imageData) {
-  return (imageData?.detections || []).map(d => ({
+function toTomatoDetections(imageData, depthTomatoes = []) {
+  const dets = (imageData?.detections || []).map(d => ({
     bbox: d.bbox, label: d.label, confidence: d.confidence,
   }))
+  if (!depthTomatoes.length) return dets
+  return dets.map(det => {
+    const { x1, y1, x2, y2 } = det.bbox
+    const matched = depthTomatoes.find(t => {
+      const [cx, cy] = t.center_px || []
+      return cx != null && cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2
+    })
+    if (!matched) return det
+    return { ...det, depth_mm: matched.depth_mm, radius_cm: matched.radius_cm, weight_g: matched.weight_g }
+  })
 }
 
 function toFlowerDetections(imageData) {
@@ -30,11 +40,12 @@ function toFlowerDetections(imageData) {
   }))
 }
 
-function toImgList(urls, labelPrefix, classification, detectionsFn) {
+function toImgList(urls, labelPrefix, classification, detectionsFn, depthTomatoes = []) {
   return (urls || []).map((url, i) => ({
     src: url.startsWith('http') ? url : `${API_BASE}/api/results${url}`,
     label: `${labelPrefix} ${i + 1}`,
-    detections: detectionsFn ? detectionsFn(classification?.images?.[i]) : [],
+    // depth analysis only covers first image
+    detections: detectionsFn ? detectionsFn(classification?.images?.[i], i === 0 ? depthTomatoes : []) : [],
   }))
 }
 
@@ -267,9 +278,9 @@ export default function RowDetails() {
   const originalImages  = activeData ? toImgList(activeData.images?.original, 'Original', null, null) : []
   const activeClassification = imageTab === 'tomatoes' ? activeData?.tomato_classification : activeData?.flower_classification
   const activeDetectionsFn   = imageTab === 'tomatoes' ? toTomatoDetections : toFlowerDetections
-  const annotatedImages = activeData ? toImgList(activeData.images?.original, 'Annotated', activeClassification, activeDetectionsFn) : []
-
   const depthAnalysis = activeData?.depth_analysis ?? null
+  const depthTomatoes = imageTab === 'tomatoes' ? (depthAnalysis?.tomatoes ?? []) : []
+  const annotatedImages = activeData ? toImgList(activeData.images?.original, 'Annotated', activeClassification, activeDetectionsFn, depthTomatoes) : []
 
   /* Selected point: counts — from the active timestamp */
   const selTomato = activeData?.tomato_classification?.summary?.by_class || {}
