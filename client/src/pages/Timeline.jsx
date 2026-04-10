@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getAllData, API_BASE } from '../api/index.js'
+import { getAllData, deleteTimestamp, API_BASE } from '../api/index.js'
 import { C, TOMATO_COLORS, FLOWER_COLORS } from '../tokens'
 import ImageModal from '../components/ImageModal'
 import AnnotatedImage from '../components/AnnotatedImage'
@@ -140,10 +140,81 @@ function Thumb({ src, label, onClick, detections = [] }) {
   )
 }
 
+/* ── inline delete confirm ── */
+function DeleteConfirm({ timestamp, onConfirm, onCancel, loading }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{
+        background: C.bg1, border: `1px solid ${C.border}`,
+        borderRadius: 12, padding: '22px 22px 18px',
+        width: 320, maxWidth: '90vw',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: 7,
+            background: '#fef2f2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 15, flexShrink: 0,
+          }}>🗑️</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.t1 }}>Delete Scan</div>
+        </div>
+        <p style={{ fontSize: 13, color: C.t2, marginBottom: 18, lineHeight: 1.6 }}>
+          Permanently delete the scan from{' '}
+          <strong style={{ color: C.t1 }}>{formatTs(timestamp)}</strong>?
+          This removes its images and classification data.
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            style={{
+              padding: '7px 15px', borderRadius: 7, fontSize: 13,
+              border: `1px solid ${C.border}`, background: C.bg2,
+              color: C.t2, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              padding: '7px 15px', borderRadius: 7, fontSize: 13,
+              border: 'none', fontFamily: 'inherit',
+              background: loading ? '#fca5a5' : '#ef4444',
+              color: '#fff',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.12s ease',
+            }}
+          >{loading ? 'Deleting…' : 'Delete'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── single timeline entry card ── */
-function TimelineEntry({ entry, isNew }) {
+function TimelineEntry({ entry, isNew, onDelete }) {
   const [showImages, setShowImages] = useState(false)
   const [modalImage, setModalImage]  = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  async function handleDelete() {
+    setDeleteLoading(true)
+    try {
+      await deleteTimestamp(entry.greenhouse_row, entry.distanceFromRowStart, entry.timestamp)
+      setConfirmDelete(false)
+      onDelete(entry.id)
+    } catch {
+      setConfirmDelete(false)
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   const tc = entry.tomato_classification
   const fc = entry.flower_classification
@@ -199,6 +270,14 @@ function TimelineEntry({ entry, isNew }) {
       {modalImage && (
         <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
       )}
+      {confirmDelete && (
+        <DeleteConfirm
+          timestamp={entry.timestamp}
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+          loading={deleteLoading}
+        />
+      )}
 
       <div style={{ position: 'relative', marginBottom: 14 }}>
         {/* Spine dot */}
@@ -244,6 +323,28 @@ function TimelineEntry({ entry, isNew }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: C.t1 }}>{formatTs(entry.timestamp)}</span>
               <span style={{ fontSize: 11, color: C.t3 }}>· {timeAgo(entry.timestamp)}</span>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                title="Delete this scan"
+                style={{
+                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'transparent',
+                  border: `1px solid ${C.border}`,
+                  color: C.t3, cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                  transition: 'background 0.1s ease, color 0.1s ease, border-color 0.1s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = '#fef2f2'
+                  e.currentTarget.style.color = '#ef4444'
+                  e.currentTarget.style.borderColor = '#fca5a5'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = C.t3
+                  e.currentTarget.style.borderColor = C.border
+                }}
+              >×</button>
             </div>
           </div>
 
@@ -477,6 +578,11 @@ export default function Timeline() {
     return () => clearInterval(t)
   }, [fetchAll, settings.autoRefresh])
 
+  function handleEntryDeleted(id) {
+    setEntries(prev => prev.filter(e => e.id !== id))
+    seenIdsRef.current.delete(id)
+  }
+
   function showPending() {
     const ids = new Set(pending.map(e => e.id))
     pending.forEach(e => seenIdsRef.current.add(e.id))
@@ -640,6 +746,7 @@ export default function Timeline() {
               key={entry.id}
               entry={entry}
               isNew={newIds.has(entry.id)}
+              onDelete={handleEntryDeleted}
             />
           ))}
         </div>

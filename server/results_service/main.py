@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from shared.config import CORS_ORIGINS
+from shared.config import CORS_ORIGINS, make_ts_key
 from shared.db import close_db, get_db, get_gridfs_bucket, ping_db
 from shared.trends import recompute_all_trends, update_daily_trend
 
@@ -379,6 +379,78 @@ async def delete_data(row: Optional[int] = Query(None, description="Row number t
         "deleted_images": len(file_ids),
         "scope": scope,
         "trend_dates_updated": sorted(affected_dates),
+    }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /deleteTimestamp
+# ---------------------------------------------------------------------------
+
+@app.delete("/deleteTimestamp")
+async def delete_timestamp(
+    row: int = Query(..., description="Greenhouse row number"),
+    distance: float = Query(..., description="Distance from row start (meters)"),
+    timestamp: str = Query(..., description="ISO timestamp string to delete"),
+):
+    """
+    Delete a single timestamp entry (and its GridFS images) from a row_data document.
+    If the document has no remaining timestamps after deletion, the whole document is removed.
+    Updates daily_trends for the affected date.
+    """
+    collection = get_db()["row_data"]
+    bucket = get_gridfs_bucket()
+
+    ts_key = make_ts_key(timestamp)
+    date_str = ts_key[:10]  # YYYY-MM-DD
+
+    doc = await collection.find_one(
+        {"greenhouse_row": row, "distanceFromRowStart": distance},
+        {"timestamps": 1},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"No data found for row {row} at {distance}m.")
+
+    ts_entry = doc.get("timestamps", {}).get(ts_key)
+    if ts_entry is None:
+        raise HTTPException(status_code=404, detail=f"Timestamp '{timestamp}' not found.")
+
+    # Delete GridFS files for this timestamp
+    file_ids: list[ObjectId] = []
+    for field in ("original_images", "tomato_annotated_images", "flower_annotated_images", "depth_images"):
+        for fid in ts_entry.get(field, []):
+            try:
+                file_ids.append(ObjectId(str(fid)))
+            except Exception:
+                pass
+
+    for fid in file_ids:
+        try:
+            await bucket.delete(fid)
+        except Exception:
+            pass
+
+    remaining_keys = [k for k in doc.get("timestamps", {}) if k != ts_key]
+
+    if remaining_keys:
+        # Remove just this timestamp key
+        await collection.update_one(
+            {"_id": doc["_id"]},
+            {"$unset": {f"timestamps.{ts_key}": ""}},
+        )
+        deleted_doc = False
+    else:
+        # No timestamps left — delete the whole document
+        await collection.delete_one({"_id": doc["_id"]})
+        deleted_doc = True
+
+    await update_daily_trend(date_str)
+
+    return {
+        "deleted_timestamp": timestamp,
+        "deleted_images": len(file_ids),
+        "document_deleted": deleted_doc,
+        "row": row,
+        "distance": distance,
     }
 
 

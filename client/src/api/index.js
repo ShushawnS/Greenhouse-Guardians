@@ -24,6 +24,9 @@ export const getAllData = () => resultsApi.get('/getAllData')
 export const deleteData = (row) =>
   resultsApi.delete('/deleteData', { params: row != null ? { row } : {} })
 
+export const deleteTimestamp = (row, distance, timestamp) =>
+  resultsApi.delete('/deleteTimestamp', { params: { row, distance, timestamp } })
+
 export const backfillFresh = ({ confidenceThreshold = 0.25, tomatoTrack = 'remote', flowerTrack = 'remote' } = {}) =>
   uploadApi.post('/backfillFresh', null, {
     params: {

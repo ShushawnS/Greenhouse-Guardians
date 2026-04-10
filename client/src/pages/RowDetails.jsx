@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getDetailedRowData, deleteData, API_BASE } from '../api'
+import { getDetailedRowData, deleteData, deleteTimestamp, API_BASE } from '../api'
 import RowVisualizer from '../components/RowVisualizer'
 import ImageGallery from '../components/ImageGallery'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -144,6 +144,70 @@ function DeleteModal({ mode, rowNum, onConfirm, onCancel, loading }) {
   )
 }
 
+/* ── Lightweight timestamp delete confirm ── */
+function DeleteTimestampModal({ timestamp, onConfirm, onCancel, loading }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(0,0,0,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div className="page-in" style={{
+        background: C.bg1,
+        border: `1px solid ${C.border}`,
+        borderRadius: 12,
+        padding: '24px 24px 20px',
+        width: 340, maxWidth: '90vw',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 7,
+            background: '#fef2f2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, flexShrink: 0,
+          }}>🗑️</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.t1 }}>Delete Scan</div>
+        </div>
+        <p style={{ fontSize: 13, color: C.t2, marginBottom: 18, lineHeight: 1.6 }}>
+          Permanently delete the scan from{' '}
+          <strong style={{ color: C.t1 }}>{formatTs(timestamp)}</strong>?
+          This removes its images and classification data.
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="btn-press"
+            style={{
+              padding: '8px 16px', borderRadius: 7, fontSize: 13,
+              border: `1px solid ${C.border}`, background: C.bg2,
+              color: C.t2, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="btn-press"
+            style={{
+              padding: '8px 16px', borderRadius: 7, fontSize: 13,
+              border: 'none', fontFamily: 'inherit',
+              background: loading ? '#fca5a5' : '#ef4444',
+              color: '#fff',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.12s ease',
+            }}
+          >
+            {loading ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Thin horizontal progress bar with label ── */
 function BreakdownBar({ label, count, total, color }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0
@@ -217,6 +281,33 @@ export default function RowDetails() {
   const [deleteMode, setDeleteMode] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteResult, setDeleteResult] = useState(null)
+
+  // Timestamp delete state
+  const [deleteTsTarget, setDeleteTsTarget] = useState(null) // { timestamp, distance }
+  const [deleteTsLoading, setDeleteTsLoading] = useState(false)
+
+  async function handleDeleteTimestamp() {
+    if (!deleteTsTarget) return
+    setDeleteTsLoading(true)
+    try {
+      await deleteTimestamp(selectedRow, deleteTsTarget.distance, deleteTsTarget.timestamp)
+      setDeleteTsTarget(null)
+      // Reload row data
+      setData(null); setSelectedIdx(0); setSelectedTsIdx(0); setError(null); setLoading(true)
+      getDetailedRowData(selectedRow)
+        .then(r => setData(r.data))
+        .catch(err => {
+          if (err.response?.status === 404) setError(`No data found for Row ${selectedRow}.`)
+          else setError(err.response?.data?.detail || err.message)
+        })
+        .finally(() => setLoading(false))
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message)
+      setDeleteTsTarget(null)
+    } finally {
+      setDeleteTsLoading(false)
+    }
+  }
 
   async function handleDelete() {
     setDeleteLoading(true)
@@ -292,6 +383,16 @@ export default function RowDetails() {
 
   return (
     <div className="page-in page-pad" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Timestamp delete confirm modal */}
+      {deleteTsTarget && (
+        <DeleteTimestampModal
+          timestamp={deleteTsTarget.timestamp}
+          onConfirm={handleDeleteTimestamp}
+          onCancel={() => setDeleteTsTarget(null)}
+          loading={deleteTsLoading}
+        />
+      )}
 
       {/* Delete confirm modal */}
       {deleteMode && (
@@ -468,28 +569,83 @@ export default function RowDetails() {
                         {allTs.map((entry, i) => {
                           const active = i === selectedTsIdx
                           return (
-                            <button
-                              key={entry.timestamp}
-                              onClick={() => { setSelectedTsIdx(i); setDepthDropdownOpen(false) }}
-                              className="btn-press"
-                              style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '6px 10px', borderRadius: 6, fontSize: 11,
-                                background: active ? C.greenDim : 'transparent',
-                                border: `1px solid ${active ? C.green + '44' : C.border}`,
-                                color: active ? C.green : C.t2,
-                                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                                transition: 'background 0.1s ease, border-color 0.1s ease, color 0.1s ease',
-                              }}
-                            >
-                              <span className="num">{formatTs(entry.timestamp)}</span>
-                              {i === 0 && (
-                                <span style={{ fontSize: 9, fontWeight: 600, color: C.t3, marginLeft: 6, flexShrink: 0 }}>LATEST</span>
-                              )}
-                            </button>
+                            <div key={entry.timestamp} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <button
+                                onClick={() => { setSelectedTsIdx(i); setDepthDropdownOpen(false) }}
+                                className="btn-press"
+                                style={{
+                                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '6px 10px', borderRadius: 6, fontSize: 11,
+                                  background: active ? C.greenDim : 'transparent',
+                                  border: `1px solid ${active ? C.green + '44' : C.border}`,
+                                  color: active ? C.green : C.t2,
+                                  cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                                  transition: 'background 0.1s ease, border-color 0.1s ease, color 0.1s ease',
+                                }}
+                              >
+                                <span className="num">{formatTs(entry.timestamp)}</span>
+                                {i === 0 && (
+                                  <span style={{ fontSize: 9, fontWeight: 600, color: C.t3, marginLeft: 6, flexShrink: 0 }}>LATEST</span>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => setDeleteTsTarget({ timestamp: entry.timestamp, distance: selected.distanceFromRowStart })}
+                                title="Delete this scan"
+                                className="btn-press"
+                                style={{
+                                  width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'transparent',
+                                  border: `1px solid ${C.border}`,
+                                  color: C.t3, cursor: 'pointer', fontSize: 12,
+                                  transition: 'background 0.1s ease, color 0.1s ease, border-color 0.1s ease',
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = '#fef2f2'
+                                  e.currentTarget.style.color = '#ef4444'
+                                  e.currentTarget.style.borderColor = '#fca5a5'
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = 'transparent'
+                                  e.currentTarget.style.color = C.t3
+                                  e.currentTarget.style.borderColor = C.border
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
                           )
                         })}
                       </div>
+                    </div>
+                  ) : allTs.length === 1 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                      <div style={{ fontSize: 11, color: C.t3 }}>{formatTs(selected.latest_timestamp)}</div>
+                      <button
+                        onClick={() => setDeleteTsTarget({ timestamp: allTs[0].timestamp, distance: selected.distanceFromRowStart })}
+                        title="Delete this scan"
+                        className="btn-press"
+                        style={{
+                          width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: 'transparent',
+                          border: `1px solid ${C.border}`,
+                          color: C.t3, cursor: 'pointer', fontSize: 12,
+                          transition: 'background 0.1s ease, color 0.1s ease, border-color 0.1s ease',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = '#fef2f2'
+                          e.currentTarget.style.color = '#ef4444'
+                          e.currentTarget.style.borderColor = '#fca5a5'
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'transparent'
+                          e.currentTarget.style.color = C.t3
+                          e.currentTarget.style.borderColor = C.border
+                        }}
+                      >
+                        ×
+                      </button>
                     </div>
                   ) : (
                     <div style={{ fontSize: 11, color: C.t3, marginTop: 6 }}>{formatTs(selected.latest_timestamp)}</div>
